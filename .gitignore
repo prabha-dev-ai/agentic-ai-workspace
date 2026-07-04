@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+coverage/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# TypeScript
+*.tsbuildinfo
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Cache
+.cache/
