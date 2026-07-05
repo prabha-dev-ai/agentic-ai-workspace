@@ -4,6 +4,8 @@ import { buildContext, formatRetrievedKnowledge } from '../memory/context-manage
 import { retrieveDocuments } from '../knowledge/retriever.service.ts';
 import { RAG_INSTRUCTIONS } from '../prompts/rag.prompt.ts';
 import { runAgentLoop } from './agent-loop.ts';
+import { AgentState } from '../core/lifecycle/AgentState.ts';
+import { LifecycleManager } from '../core/lifecycle/LifecycleManager.ts';
 import type { ToolSource } from './agent-loop.ts';
 import type { Agent } from './agent.types.ts';
 import type { ConversationMemory } from '../memory/memory.types.ts';
@@ -56,6 +58,8 @@ export interface AgentRuntime {
   agent: Agent;
   /** This runtime's short-term memory. clear() starts a new conversation. */
   memory: ConversationMemory;
+  /** Diagnostics: one lifecycle per run(), with full transition history. */
+  lifecycles: LifecycleManager;
   /** Run one turn with this agent and return its raw final answer. */
   run(message: string): Promise<string>;
 }
@@ -66,55 +70,104 @@ export function createAgentRuntime(
 ): AgentRuntime {
   const { client, tools } = options;
   const memory = createConversationMemory();
+  const lifecycles = new LifecycleManager();
   const contextWindow: ContextWindow =
     options.contextWindow ?? { strategy: 'sliding-window', size: 10 };
 
   return {
     agent,
     memory,
+    lifecycles,
 
     async run(message: string): Promise<string> {
-      // RAG happens BEFORE generation: search the knowledge base with the
-      // user's message, and put the winners in front of the model. Fresh
-      // every turn and never persisted to memory — injected knowledge is
-      // working state, and re-remembering it would fossilize stale docs
-      // into the conversation.
-      const knowledgeBlock = options.knowledgeStore
-        ? formatRetrievedKnowledge(
-            retrieveDocuments(options.knowledgeStore, message),
-          )
-        : null;
+      // Every execution gets its own lifecycle instance; the transitions
+      // below are the formal record of what this run did and when.
+      const lifecycle = lifecycles.create();
 
-      // One merged system message (free-tier models mishandle a second
-      // one): agent identity, then RAG rules + retrieved documents.
-      const systemContent = knowledgeBlock
-        ? `${agent.systemPrompt}\n\n${RAG_INSTRUCTIONS}\n\n${knowledgeBlock}`
-        : agent.systemPrompt;
+      try {
+        // INITIALIZING: assemble everything the model will see.
+        lifecycle.transition(AgentState.Initializing);
 
-      // Memory remembers everything; the context manager decides what the
-      // model sees this turn: system prompt, the windowed history, then
-      // the new user message.
-      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-        { role: 'system', content: systemContent },
-        ...buildContext(memory.getHistory(), contextWindow),
-        { role: 'user', content: message },
-      ];
+        // RAG happens BEFORE generation: search the knowledge base with
+        // the user's message, and put the winners in front of the model.
+        // Fresh every turn and never persisted to memory — injected
+        // knowledge is working state, and re-remembering it would
+        // fossilize stale docs into the conversation.
+        const knowledgeBlock = options.knowledgeStore
+          ? formatRetrievedKnowledge(
+              retrieveDocuments(options.knowledgeStore, message),
+            )
+          : null;
 
-      const answer = await runAgentLoop({
-        client,
-        model: agent.model,
-        messages,
-        tools,
-        maxIterations: agent.maxIterations,
-      });
+        // One merged system message (free-tier models mishandle a second
+        // one): agent identity, then RAG rules + retrieved documents.
+        const systemContent = knowledgeBlock
+          ? `${agent.systemPrompt}\n\n${RAG_INSTRUCTIONS}\n\n${knowledgeBlock}`
+          : agent.systemPrompt;
 
-      // Remember only successful exchanges — if the loop threw, the model
-      // must not later "recall" a turn that never completed. Tool calls
-      // from inside the loop are intentionally not persisted.
-      memory.append({ role: 'user', content: message });
-      memory.append({ role: 'assistant', content: answer });
+        // Memory remembers everything; the context manager decides what
+        // the model sees this turn: system prompt, the windowed history,
+        // then the new user message.
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          { role: 'system', content: systemContent },
+          ...buildContext(memory.getHistory(), contextWindow),
+          { role: 'user', content: message },
+        ];
 
-      return answer;
+        lifecycle.transition(AgentState.Ready);
+        lifecycle.transition(AgentState.Executing);
+
+        const answer = await runAgentLoop({
+          client,
+          model: agent.model,
+          messages,
+          // Decorated so tool waits are visible in the lifecycle while
+          // the loop itself stays completely lifecycle-unaware.
+          tools: instrumentTools(tools, lifecycle),
+          maxIterations: agent.maxIterations,
+        });
+
+        lifecycle.transition(AgentState.Completed);
+
+        // Remember only successful exchanges — if the loop threw, the
+        // model must not later "recall" a turn that never completed.
+        // Tool calls from inside the loop are intentionally not persisted.
+        memory.append({ role: 'user', content: message });
+        memory.append({ role: 'assistant', content: answer });
+
+        return answer;
+      } catch (error) {
+        if (!lifecycle.isTerminal()) {
+          lifecycle.transition(
+            AgentState.Failed,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+// Wraps a ToolSource so every dispatch records Executing -> WaitingForTool
+// -> Executing on the run's lifecycle. Failures propagate untouched; the
+// run's catch block records them as the Failed transition.
+function instrumentTools(
+  tools: ToolSource,
+  lifecycle: ReturnType<LifecycleManager['create']>,
+): ToolSource {
+  return {
+    getToolDefinitions: () => tools.getToolDefinitions(),
+
+    async executeTool(name, args) {
+      lifecycle.transition(AgentState.WaitingForTool, `tool: ${name}`);
+      try {
+        return await tools.executeTool(name, args);
+      } finally {
+        if (!lifecycle.isTerminal()) {
+          lifecycle.transition(AgentState.Executing);
+        }
+      }
     },
   };
 }
