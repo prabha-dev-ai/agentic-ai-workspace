@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { chatRouter } from './routes/chat.routes.ts';
 
 const app = express();
 
@@ -16,5 +17,7 @@ app.get('/health', (_req, res) => {
     uptime: process.uptime(),
   });
 });
+
+app.use('/chat', chatRouter);
 
 export { app };
