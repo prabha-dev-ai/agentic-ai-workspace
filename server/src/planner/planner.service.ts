@@ -1,41 +1,37 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { env } from '../config/env.ts';
 import { PLANNER_PROMPT } from '../prompts/planner.prompt.ts';
 import type { ExecutionPlan, PlanStep } from './planner.types.ts';
 
-// Structured like llm.service.ts on purpose: env-based client, one public
-// function, strict parse-then-validate at the boundary. The second client
-// instance duplicates llm.service.ts because modifying it is out of scope
-// here — a shared config/openai-client.ts is the future consolidation.
-if (!env.llm.apiKey) {
-  throw new Error(
-    'LLM_API_KEY is not set. Add it to server/.env before starting the server.',
-  );
+// The planning role: decompose a request into steps, never execute them.
+// The OpenAI client is injected (see core/bootstrap.ts).
+
+export interface PlannerService {
+  createPlan(message: string): Promise<ExecutionPlan>;
 }
 
-const client = new OpenAI({
-  apiKey: env.llm.apiKey,
-  baseURL: env.llm.baseUrl,
-});
+export function createPlannerService(client: OpenAI): PlannerService {
+  return {
+    async createPlan(message: string): Promise<ExecutionPlan> {
+      const completion = await client.chat.completions.create({
+        model: env.llm.model,
+        messages: [
+          { role: 'system', content: PLANNER_PROMPT },
+          { role: 'user', content: message },
+        ],
+        // No tools are offered here, so JSON mode is safe to request.
+        response_format: { type: 'json_object' },
+      });
 
-export async function createPlan(message: string): Promise<ExecutionPlan> {
-  const completion = await client.chat.completions.create({
-    model: env.llm.model,
-    messages: [
-      { role: 'system', content: PLANNER_PROMPT },
-      { role: 'user', content: message },
-    ],
-    // No tools are offered here, so JSON mode is safe to request directly.
-    response_format: { type: 'json_object' },
-  });
+      const content = completion.choices[0]?.message.content;
 
-  const content = completion.choices[0]?.message.content;
+      if (!content) {
+        throw new Error('Planner returned an empty response.');
+      }
 
-  if (!content) {
-    throw new Error('Planner returned an empty response.');
-  }
-
-  return parseExecutionPlan(content);
+      return parseExecutionPlan(content);
+    },
+  };
 }
 
 // Types are erased at runtime, so the plan must be validated field by

@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { env } from '../config/env.ts';
 import { runAgentLoop } from '../agents/agent-loop.ts';
 import { EXECUTOR_PROMPT } from '../prompts/executor.prompt.ts';
@@ -7,67 +7,53 @@ import type { ExecutionResult, StepResult } from './executor.types.ts';
 
 // The executor coordinates; it never talks to the LLM directly. Each step
 // becomes one full agent-loop run (which may use several tool iterations),
-// and its output becomes context for the steps after it.
+// and its output becomes context for the steps after it. The OpenAI
+// client is injected (see core/bootstrap.ts).
 
-if (!env.llm.apiKey) {
-  throw new Error(
-    'LLM_API_KEY is not set. Add it to server/.env before starting the server.',
-  );
+export interface ExecutorService {
+  executePlan(plan: ExecutionPlan): Promise<ExecutionResult>;
 }
 
-const defaultClient = new OpenAI({
-  apiKey: env.llm.apiKey,
-  baseURL: env.llm.baseUrl,
-});
-
-export interface ExecutorOptions {
-  /** Injectable for tests and future per-agent configuration. */
-  client?: OpenAI;
-  model?: string;
-}
-
-export async function executePlan(
-  plan: ExecutionPlan,
-  options: ExecutorOptions = {},
-): Promise<ExecutionResult> {
-  validatePlan(plan);
-
-  const client = options.client ?? defaultClient;
-  const model = options.model ?? env.llm.model;
-
-  const stepResults: StepResult[] = [];
-
-  // Sequential on purpose: later steps consume earlier outputs, so order
-  // is part of the contract. Parallelism belongs to a future story.
-  for (const step of plan.steps) {
-    try {
-      const output = await runAgentLoop({
-        client,
-        model,
-        messages: buildStepMessages(plan, step, stepResults),
-      });
-
-      stepResults.push({ step, status: 'completed', output });
-    } catch (error) {
-      // A failed step is recorded, not thrown: later steps may not depend
-      // on it, and a partial result beats none. The caller sees the counts.
-      stepResults.push({
-        step,
-        status: 'failed',
-        output: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  const completedSteps = stepResults.filter(
-    (result) => result.status === 'completed',
-  ).length;
-
+export function createExecutorService(client: OpenAI): ExecutorService {
   return {
-    goal: plan.goal,
-    stepResults,
-    completedSteps,
-    failedSteps: stepResults.length - completedSteps,
+    async executePlan(plan: ExecutionPlan): Promise<ExecutionResult> {
+      validatePlan(plan);
+
+      const stepResults: StepResult[] = [];
+
+      // Sequential on purpose: later steps consume earlier outputs, so
+      // order is part of the contract.
+      for (const step of plan.steps) {
+        try {
+          const output = await runAgentLoop({
+            client,
+            model: env.llm.model,
+            messages: buildStepMessages(plan, step, stepResults),
+          });
+
+          stepResults.push({ step, status: 'completed', output });
+        } catch (error) {
+          // A failed step is recorded, not thrown: later steps may not
+          // depend on it, and a partial result beats none.
+          stepResults.push({
+            step,
+            status: 'failed',
+            output: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      const completedSteps = stepResults.filter(
+        (result) => result.status === 'completed',
+      ).length;
+
+      return {
+        goal: plan.goal,
+        stepResults,
+        completedSteps,
+        failedSteps: stepResults.length - completedSteps,
+      };
+    },
   };
 }
 
@@ -91,8 +77,6 @@ function validatePlan(plan: ExecutionPlan): void {
 
 // Each step gets a fresh, scoped conversation: the goal, everything the
 // previous steps produced, and the single instruction to execute now.
-// Passing previous results forward is what turns N isolated questions
-// into a pipeline.
 function buildStepMessages(
   plan: ExecutionPlan,
   step: PlanStep,

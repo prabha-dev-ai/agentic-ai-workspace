@@ -1,44 +1,44 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { env } from '../config/env.ts';
 import { SYSTEM_PROMPT } from '../prompts/system.prompt.ts';
 import { JSON_OUTPUT_INSTRUCTIONS } from '../prompts/json-output.prompt.ts';
 import { runAgentLoop } from '../agents/agent-loop.ts';
 import type { AIResponse } from '../types/ai-response.ts';
 
-// OpenRouter implements the OpenAI API, so the official SDK works with it —
-// only the baseURL changes. Swapping providers is a config change, not code.
-if (!env.llm.apiKey) {
-  throw new Error(
-    'LLM_API_KEY is not set. Add it to server/.env before starting the server.',
-  );
+// The assistant's chat service. The OpenAI client is injected (see
+// core/bootstrap.ts) — services never construct their own connections,
+// so the whole process shares one client.
+
+export interface LlmService {
+  generateResponse(message: string): Promise<AIResponse>;
 }
 
-// One client for the whole process: it is a stateless HTTP wrapper, so
-// creating it per request would only waste connections.
-const client = new OpenAI({
-  apiKey: env.llm.apiKey,
-  baseURL: env.llm.baseUrl,
-});
+export function createLlmService(client: OpenAI): LlmService {
+  return {
+    async generateResponse(message: string): Promise<AIResponse> {
+      // The service owns the conversation setup and the output contract.
+      // The Observe -> Think -> Act cycle itself lives in the agent loop.
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        // One combined system message: many models (especially the free
+        // ones behind the openrouter/free router) ignore or drop a second
+        // system message, so behavior and format rules travel together.
+        {
+          role: 'system',
+          content: `${SYSTEM_PROMPT}\n\n${JSON_OUTPUT_INSTRUCTIONS}`,
+        },
+        { role: 'user', content: message },
+      ];
 
-export async function generateResponse(message: string): Promise<AIResponse> {
-  // The service owns the conversation setup and the output contract.
-  // The Observe -> Think -> Act cycle itself lives in the agent loop.
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    // One combined system message: many models (especially the free
-    // ones behind the openrouter/free router) ignore or drop a second
-    // system message, so behavior and format rules travel together.
-    { role: 'system', content: `${SYSTEM_PROMPT}\n\n${JSON_OUTPUT_INSTRUCTIONS}` },
-    { role: 'user', content: message },
-  ];
+      const raw = await runAgentLoop({
+        client,
+        model: env.llm.model,
+        messages,
+        maxIterations: 5,
+      });
 
-  const raw = await runAgentLoop({
-    client,
-    model: env.llm.model,
-    messages,
-    maxIterations: 5,
-  });
-
-  return parseAIResponse(raw);
+      return parseAIResponse(raw);
+    },
+  };
 }
 
 // Never trust model output: JSON mode ensures valid JSON at best, not our

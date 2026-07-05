@@ -1,6 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import { chatRouter } from './routes/chat.routes.ts';
+import { bootstrap } from './core/bootstrap.ts';
+import { TOKENS } from './core/tokens.ts';
+import { createChatRouter } from './routes/chat.routes.ts';
+
+// Wire the framework once at startup; hand each route its dependencies.
+const container = bootstrap();
 
 const app = express();
 
@@ -18,6 +23,6 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.use('/chat', chatRouter);
+app.use('/chat', createChatRouter(container.get(TOKENS.llmService)));
 
 export { app };
