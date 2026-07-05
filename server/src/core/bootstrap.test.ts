@@ -33,6 +33,34 @@ describe('framework bootstrap', () => {
     assert.match(result, /\d{4}/, 'executing the time tool returns a real date');
   });
 
+  test('a custom plugin directory replaces the built-in set', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'bootstrap-plugins-'));
+    try {
+      writeFileSync(
+        join(dir, 'custom.plugin.ts'),
+        `export const customPlugin = {
+          metadata: {
+            id: 'test.custom', name: 'Custom', version: '1.0.0',
+            description: 'fixture', author: 'tests', capabilities: [],
+          },
+          register() {},
+        };\n`,
+      );
+
+      const container = await bootstrap({ pluginDirectory: dir });
+      const registry = container.get(TOKENS.pluginRegistry);
+
+      assert.equal(registry.exists('test.custom'), true);
+      assert.equal(registry.exists('core.time'), false, 'default dir not scanned');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('installation diagnostics are available through the container', async () => {
     const loader = (await bootstrap()).get(TOKENS.pluginLoader);
 

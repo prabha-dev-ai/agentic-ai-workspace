@@ -28,6 +28,7 @@ export type {
 
 export { PluginRegistry } from './PluginRegistry.ts';
 export { PluginLoader } from './PluginLoader.ts';
+export { discoverPlugins, isAgentPlugin } from './PluginDiscovery.ts';
 export type {
   PluginContributionSummary,
   PluginInstallation,

@@ -1,31 +1,44 @@
 import OpenAI from 'openai';
+import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
-import { PluginRegistry, PluginLoader } from './plugins/index.ts';
+import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
 import { createExecutorService } from '../executor/executor.service.ts';
 import { createAgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import { createKnowledgeStore } from '../knowledge/knowledge-store.ts';
-import { timePlugin } from '../plugins/time.plugin.ts';
-import type { AgentPlugin } from './plugins/index.ts';
 import type { Container } from './container/Container.ts';
 
-// Every plugin that ships with the framework. Installation order matters
-// only for tool-name collisions, which the loader rejects loudly.
-const BUILTIN_PLUGINS: AgentPlugin[] = [timePlugin];
+// Plugins live next to the running code: src/plugins/ in development,
+// dist/plugins/ in production. Dropping a *.plugin file there is the
+// whole act of adding a plugin — no import list to maintain.
+const DEFAULT_PLUGIN_DIRECTORY = fileURLToPath(
+  new URL('../plugins/', import.meta.url),
+);
+
+export interface BootstrapOptions {
+  /** Override the plugin directory (used by tests and embedders). */
+  pluginDirectory?: string;
+}
 
 // The composition root: the ONE place where the framework's object graph
-// is wired together. Async because plugin installation runs register()
-// hooks, which may be async.
-export async function bootstrap(): Promise<Container> {
+// is wired together. Async because plugin discovery imports modules and
+// installation runs register() hooks, which may be async.
+export async function bootstrap(
+  options: BootstrapOptions = {},
+): Promise<Container> {
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
   const pluginRegistry = new PluginRegistry();
   const pluginLoader = new PluginLoader(pluginRegistry);
 
-  for (const plugin of BUILTIN_PLUGINS) {
+  const plugins = await discoverPlugins(
+    options.pluginDirectory ?? DEFAULT_PLUGIN_DIRECTORY,
+  );
+
+  for (const plugin of plugins) {
     await pluginLoader.install(plugin);
   }
 
