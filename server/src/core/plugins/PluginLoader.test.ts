@@ -135,6 +135,165 @@ describe('tool harvesting', () => {
   });
 });
 
+describe('generalized contributions', () => {
+  test('harvests prompts, retrievers, workflows and agents', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    const plugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.kitchen-sink',
+        name: 'Kitchen Sink',
+        version: '1.0.0',
+        description: 'contributes everything',
+        author: 'tests',
+        capabilities: [
+          PluginCapability.PromptProvider,
+          PluginCapability.RetrieverProvider,
+          PluginCapability.WorkflowProvider,
+          PluginCapability.AgentProvider,
+        ],
+      },
+      register() {},
+      getPrompts: () => [{ name: 'pirate', content: 'Talk like a pirate.' }],
+      getRetrievers: () => [{ name: 'docs', retrieve: () => ['result'] }],
+      getWorkflows: () => [
+        { name: 'triage', description: 'triage flow', steps: [{ id: 1, description: 'read' }] },
+      ],
+      getAgents: () => [
+        { name: 'reviewer', description: 'reviews code', systemPrompt: 'Review.' },
+      ],
+    };
+
+    await loader.install(plugin);
+
+    assert.deepEqual(loader.getPrompts().map((p) => p.name), ['pirate']);
+    assert.deepEqual(loader.getRetrievers().map((r) => r.name), ['docs']);
+    assert.deepEqual(loader.getWorkflows().map((w) => w.name), ['triage']);
+    assert.deepEqual(loader.getAgents().map((a) => a.name), ['reviewer']);
+  });
+
+  test('declared-but-unimplemented fails uniformly for every capability', async () => {
+    const registry = new PluginRegistry();
+    const loader = new PluginLoader(registry);
+    const liar: AgentPlugin = {
+      metadata: {
+        id: 'core.liar',
+        name: 'Liar',
+        version: '1.0.0',
+        description: 'claims without implementing',
+        author: 'tests',
+        capabilities: [PluginCapability.PromptProvider],
+      },
+      register() {},
+    };
+
+    await assert.rejects(
+      () => loader.install(liar),
+      /declares prompt-provider but does not implement getPrompts\(\)/,
+    );
+    assert.equal(registry.exists('core.liar'), false);
+  });
+
+  test('named collisions apply across contribution kinds independently', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+
+    const promptPlugin = (id: string): AgentPlugin & Record<string, unknown> => ({
+      metadata: {
+        id, name: id, version: '1.0.0', description: 't', author: 'tests',
+        capabilities: [PluginCapability.PromptProvider],
+      },
+      register() {},
+      getPrompts: () => [{ name: 'persona', content: 'x' }],
+    });
+
+    await loader.install(promptPlugin('core.a'));
+
+    await assert.rejects(
+      () => loader.install(promptPlugin('core.b')),
+      /Prompt "persona" from plugin "core\.b" collides .* plugin "core\.a"/,
+    );
+    assert.equal(loader.getPrompts().length, 1, 'first plugin intact');
+  });
+
+  test('failed install releases contributions of every kind', async () => {
+    const registry = new PluginRegistry();
+    const loader = new PluginLoader(registry);
+    const plugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.halfway',
+        name: 'Halfway',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [PluginCapability.PromptProvider, PluginCapability.WorkflowProvider],
+      },
+      register() {},
+      getPrompts: () => [{ name: 'ok-prompt', content: 'x' }],
+      // Workflow with an empty name fails validation AFTER prompts committed.
+      getWorkflows: () => [{ name: '', description: 'broken', steps: [] }],
+    };
+
+    await assert.rejects(() => loader.install(plugin), PluginValidationError);
+    assert.equal(registry.exists('core.halfway'), false);
+    assert.deepEqual(loader.getPrompts(), [], 'earlier-kind contributions rolled back');
+  });
+});
+
+describe('service provider integration', () => {
+  test('registerServices lets plugins contribute container services', async () => {
+    const { ServiceCollection } = await import('../container/ServiceCollection.ts');
+    const { createServiceToken } = await import('../container/ServiceDescriptor.ts');
+
+    const token = createServiceToken<string>('plugin-greeting');
+    const loader = new PluginLoader(new PluginRegistry());
+    const plugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.services',
+        name: 'Service Plugin',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [PluginCapability.ServiceProvider],
+      },
+      register() {},
+      registerServices(services: InstanceType<typeof ServiceCollection>) {
+        services.registerSingleton(token, () => 'hello from plugin');
+      },
+    };
+    await loader.install(plugin);
+
+    const services = new ServiceCollection();
+    loader.registerServices(services);
+
+    assert.equal(services.build().get(token), 'hello from plugin');
+  });
+
+  test('a throwing service provider reports the owning plugin', async () => {
+    const { ServiceCollection } = await import('../container/ServiceCollection.ts');
+
+    const loader = new PluginLoader(new PluginRegistry());
+    const plugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.broken-services',
+        name: 'Broken',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [PluginCapability.ServiceProvider],
+      },
+      register() {},
+      registerServices() {
+        throw new Error('bad wiring');
+      },
+    };
+    await loader.install(plugin);
+
+    assert.throws(
+      () => loader.registerServices(new ServiceCollection()),
+      /Plugin "core\.broken-services" failed to register services: bad wiring/,
+    );
+  });
+});
+
 describe('plugin uninstall', () => {
   test('uninstall runs dispose() and releases the plugin and its tools', async () => {
     const registry = new PluginRegistry();

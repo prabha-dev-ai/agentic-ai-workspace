@@ -79,5 +79,10 @@ export async function bootstrap(): Promise<Container> {
     createKnowledgeStore(),
   );
 
+  // ServiceProvider plugins contribute services last, into the same
+  // collection — duplicate protection guards them against core tokens
+  // (and each other) before the container is frozen by build().
+  pluginLoader.registerServices(services);
+
   return services.build();
 }
