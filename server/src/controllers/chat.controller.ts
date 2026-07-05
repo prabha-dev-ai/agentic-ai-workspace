@@ -15,8 +15,8 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const reply = await generateResponse(message);
-    res.status(200).json({ reply });
+    const result = await generateResponse(message);
+    res.status(200).json({ reply: result.answer });
   } catch (error) {
     // Log the real error for us; send a generic message to the client so
     // internal details (provider, keys, stack traces) never leak.
