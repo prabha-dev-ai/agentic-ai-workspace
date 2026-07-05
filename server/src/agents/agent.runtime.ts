@@ -4,6 +4,7 @@ import { buildContext, formatRetrievedKnowledge } from '../memory/context-manage
 import { retrieveDocuments } from '../knowledge/retriever.service.ts';
 import { RAG_INSTRUCTIONS } from '../prompts/rag.prompt.ts';
 import { runAgentLoop } from './agent-loop.ts';
+import type { ToolSource } from './agent-loop.ts';
 import type { Agent } from './agent.types.ts';
 import type { ConversationMemory } from '../memory/memory.types.ts';
 import type { ContextWindow } from '../memory/context-manager.types.ts';
@@ -19,25 +20,34 @@ import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 export interface AgentRuntimeOptions {
   /** The LLM client — always injected, never constructed here. */
   client: OpenAI;
+  /** The tool catalog (from the plugin loader) — always injected. */
+  tools: ToolSource;
   /** Policy for what the model sees per turn. Default: sliding window of 10. */
   contextWindow?: ContextWindow;
   /** Optional knowledge base. When set, every turn retrieves against it. */
   knowledgeStore?: KnowledgeStore;
 }
 
-/** Runtime options a caller may choose; the client is the factory's job. */
-export type AgentRuntimeCreationOptions = Omit<AgentRuntimeOptions, 'client'>;
+/** Options a caller may choose; client and tools are the factory's job. */
+export type AgentRuntimeCreationOptions = Omit<
+  AgentRuntimeOptions,
+  'client' | 'tools'
+>;
 
-// The container-facing entry point: binds the process-wide client once,
-// so callers create runtimes without ever touching connection concerns.
+// The container-facing entry point: binds the process-wide client and
+// tool catalog once, so callers create runtimes without ever touching
+// connection or plugin concerns.
 export interface AgentRuntimeFactory {
   createRuntime(agent: Agent, options?: AgentRuntimeCreationOptions): AgentRuntime;
 }
 
-export function createAgentRuntimeFactory(client: OpenAI): AgentRuntimeFactory {
+export function createAgentRuntimeFactory(
+  client: OpenAI,
+  tools: ToolSource,
+): AgentRuntimeFactory {
   return {
     createRuntime(agent: Agent, options: AgentRuntimeCreationOptions = {}) {
-      return createAgentRuntime(agent, { ...options, client });
+      return createAgentRuntime(agent, { ...options, client, tools });
     },
   };
 }
@@ -54,7 +64,7 @@ export function createAgentRuntime(
   agent: Agent,
   options: AgentRuntimeOptions,
 ): AgentRuntime {
-  const { client } = options;
+  const { client, tools } = options;
   const memory = createConversationMemory();
   const contextWindow: ContextWindow =
     options.contextWindow ?? { strategy: 'sliding-window', size: 10 };
@@ -94,6 +104,7 @@ export function createAgentRuntime(
         client,
         model: agent.model,
         messages,
+        tools,
         maxIterations: agent.maxIterations,
       });
 

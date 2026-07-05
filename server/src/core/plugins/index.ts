@@ -27,6 +27,7 @@ export type {
 } from './PluginCapability.ts';
 
 export { PluginRegistry } from './PluginRegistry.ts';
+export { PluginLoader } from './PluginLoader.ts';
 
 export {
   PluginError,

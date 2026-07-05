@@ -1,19 +1,38 @@
 import OpenAI from 'openai';
 import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
+import { PluginRegistry, PluginLoader } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
 import { createExecutorService } from '../executor/executor.service.ts';
 import { createAgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import { createKnowledgeStore } from '../knowledge/knowledge-store.ts';
+import { timePlugin } from '../plugins/time.plugin.ts';
+import type { AgentPlugin } from './plugins/index.ts';
 import type { Container } from './container/Container.ts';
 
+// Every plugin that ships with the framework. Installation order matters
+// only for tool-name collisions, which the loader rejects loudly.
+const BUILTIN_PLUGINS: AgentPlugin[] = [timePlugin];
+
 // The composition root: the ONE place where the framework's object graph
-// is wired together. Everything else asks the container; nothing else
-// constructs shared services.
-export function bootstrap(): Container {
+// is wired together. Async because plugin installation runs register()
+// hooks, which may be async.
+export async function bootstrap(): Promise<Container> {
+  // Plugins install before the container builds, so services can receive
+  // the loader (the aggregated tool catalog) as an ordinary dependency.
+  const pluginRegistry = new PluginRegistry();
+  const pluginLoader = new PluginLoader(pluginRegistry);
+
+  for (const plugin of BUILTIN_PLUGINS) {
+    await pluginLoader.install(plugin);
+  }
+
   const services = new ServiceCollection();
+
+  services.registerSingleton(TOKENS.pluginRegistry, () => pluginRegistry);
+  services.registerSingleton(TOKENS.pluginLoader, () => pluginLoader);
 
   // The single OpenAI client for the whole process, created lazily on
   // first resolution. The container is the only owner — no module-level
@@ -32,7 +51,10 @@ export function bootstrap(): Container {
   });
 
   services.registerSingleton(TOKENS.llmService, (container) =>
-    createLlmService(container.get(TOKENS.openaiClient)),
+    createLlmService(
+      container.get(TOKENS.openaiClient),
+      container.get(TOKENS.pluginLoader),
+    ),
   );
 
   services.registerSingleton(TOKENS.plannerService, (container) =>
@@ -40,11 +62,17 @@ export function bootstrap(): Container {
   );
 
   services.registerSingleton(TOKENS.executorService, (container) =>
-    createExecutorService(container.get(TOKENS.openaiClient)),
+    createExecutorService(
+      container.get(TOKENS.openaiClient),
+      container.get(TOKENS.pluginLoader),
+    ),
   );
 
   services.registerSingleton(TOKENS.agentRuntimeFactory, (container) =>
-    createAgentRuntimeFactory(container.get(TOKENS.openaiClient)),
+    createAgentRuntimeFactory(
+      container.get(TOKENS.openaiClient),
+      container.get(TOKENS.pluginLoader),
+    ),
   );
 
   services.registerSingleton(TOKENS.knowledgeStore, () =>

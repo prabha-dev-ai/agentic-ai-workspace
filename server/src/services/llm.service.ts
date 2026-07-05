@@ -3,17 +3,18 @@ import { env } from '../config/env.ts';
 import { SYSTEM_PROMPT } from '../prompts/system.prompt.ts';
 import { JSON_OUTPUT_INSTRUCTIONS } from '../prompts/json-output.prompt.ts';
 import { runAgentLoop } from '../agents/agent-loop.ts';
+import type { ToolSource } from '../agents/agent-loop.ts';
 import type { AIResponse } from '../types/ai-response.ts';
 
-// The assistant's chat service. The OpenAI client is injected (see
-// core/bootstrap.ts) — services never construct their own connections,
-// so the whole process shares one client.
+// The assistant's chat service. The OpenAI client and the tool catalog
+// are injected (see core/bootstrap.ts) — services never construct their
+// own connections and never decide what tools exist.
 
 export interface LlmService {
   generateResponse(message: string): Promise<AIResponse>;
 }
 
-export function createLlmService(client: OpenAI): LlmService {
+export function createLlmService(client: OpenAI, tools: ToolSource): LlmService {
   return {
     async generateResponse(message: string): Promise<AIResponse> {
       // The service owns the conversation setup and the output contract.
@@ -33,6 +34,7 @@ export function createLlmService(client: OpenAI): LlmService {
         client,
         model: env.llm.model,
         messages,
+        tools,
         maxIterations: 5,
       });
 

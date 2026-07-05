@@ -1,5 +1,6 @@
 import type OpenAI from 'openai';
 import { createServiceToken } from './container/ServiceDescriptor.ts';
+import type { PluginRegistry, PluginLoader } from './plugins/index.ts';
 import type { LlmService } from '../services/llm.service.ts';
 import type { PlannerService } from '../planner/planner.service.ts';
 import type { ExecutorService } from '../executor/executor.service.ts';
@@ -11,6 +12,8 @@ import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 // with no casts anywhere.
 export const TOKENS = {
   openaiClient: createServiceToken<OpenAI>('openai-client'),
+  pluginRegistry: createServiceToken<PluginRegistry>('plugin-registry'),
+  pluginLoader: createServiceToken<PluginLoader>('plugin-loader'),
   llmService: createServiceToken<LlmService>('llm-service'),
   plannerService: createServiceToken<PlannerService>('planner-service'),
   executorService: createServiceToken<ExecutorService>('executor-service'),

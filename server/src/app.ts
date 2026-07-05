@@ -4,8 +4,9 @@ import { bootstrap } from './core/bootstrap.ts';
 import { TOKENS } from './core/tokens.ts';
 import { createChatRouter } from './routes/chat.routes.ts';
 
-// Wire the framework once at startup; hand each route its dependencies.
-const container = bootstrap();
+// Wire the framework once at startup (top-level await: plugins install
+// before the first request); hand each route its dependencies.
+const container = await bootstrap();
 
 const app = express();
 

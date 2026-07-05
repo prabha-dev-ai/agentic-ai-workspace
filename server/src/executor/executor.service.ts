@@ -2,6 +2,7 @@ import type OpenAI from 'openai';
 import { env } from '../config/env.ts';
 import { runAgentLoop } from '../agents/agent-loop.ts';
 import { EXECUTOR_PROMPT } from '../prompts/executor.prompt.ts';
+import type { ToolSource } from '../agents/agent-loop.ts';
 import type { ExecutionPlan, PlanStep } from '../planner/planner.types.ts';
 import type { ExecutionResult, StepResult } from './executor.types.ts';
 
@@ -14,7 +15,10 @@ export interface ExecutorService {
   executePlan(plan: ExecutionPlan): Promise<ExecutionResult>;
 }
 
-export function createExecutorService(client: OpenAI): ExecutorService {
+export function createExecutorService(
+  client: OpenAI,
+  tools: ToolSource,
+): ExecutorService {
   return {
     async executePlan(plan: ExecutionPlan): Promise<ExecutionResult> {
       validatePlan(plan);
@@ -29,6 +33,7 @@ export function createExecutorService(client: OpenAI): ExecutorService {
             client,
             model: env.llm.model,
             messages: buildStepMessages(plan, step, stepResults),
+            tools,
           });
 
           stepResults.push({ step, status: 'completed', output });
