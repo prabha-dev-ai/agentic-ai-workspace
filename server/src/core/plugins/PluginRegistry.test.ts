@@ -1,145 +1,156 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PluginRegistry } from './PluginRegistry.ts';
-import type { Plugin, PluginTool } from './Plugin.ts';
+import { PluginCapability } from './PluginCapability.ts';
+import type { AgentPlugin } from './AgentPlugin.ts';
+import type { ToolProvider } from './PluginCapability.ts';
 
-function makeTool(name: string, result = `${name}-result`): PluginTool {
+function makePlugin(
+  id: string,
+  capabilities: PluginCapability[] = [],
+  onRegister?: () => void,
+): AgentPlugin {
   return {
-    definition: {
-      type: 'function',
-      function: { name, description: `test tool ${name}`, parameters: { type: 'object', properties: {} } },
+    metadata: {
+      id,
+      name: `Plugin ${id}`,
+      version: '1.0.0',
+      description: 'test plugin',
+      author: 'tests',
+      capabilities,
     },
-    execute: () => result,
+    register() {
+      onRegister?.();
+    },
   };
 }
 
-function makePlugin(name: string, tools: PluginTool[]): Plugin {
-  return { name, version: '1.0.0', description: `test plugin ${name}`, tools };
-}
-
 describe('plugin registration', () => {
-  test('registers plugins and lists them', () => {
+  test('registers and retrieves plugins by id', () => {
     const registry = new PluginRegistry();
-    registry.register(makePlugin('alpha', [makeTool('alpha_tool')]));
+    const plugin = makePlugin('core.alpha');
 
-    assert.equal(registry.hasPlugin('alpha'), true);
-    assert.deepEqual(registry.getPlugins().map((p) => p.name), ['alpha']);
+    registry.register(plugin);
+
+    assert.equal(registry.get('core.alpha'), plugin);
+    assert.equal(registry.get('core.missing'), undefined);
   });
 
-  test('rejects invalid plugins', () => {
+  test('rejects duplicate plugin ids', () => {
     const registry = new PluginRegistry();
+    registry.register(makePlugin('core.alpha'));
 
-    assert.throws(() => registry.register(makePlugin('', [])), /non-empty name/);
     assert.throws(
-      () => registry.register({ ...makePlugin('x', []), version: ' ' }),
-      /needs a version/,
+      () => registry.register(makePlugin('core.alpha')),
+      /"core\.alpha" is already registered/,
     );
   });
 
-  test('rejects duplicate plugin names', () => {
+  test('rejects invalid metadata with specific errors', () => {
     const registry = new PluginRegistry();
-    registry.register(makePlugin('alpha', []));
 
-    assert.throws(() => registry.register(makePlugin('alpha', [])), /already registered/);
+    assert.throws(() => registry.register(makePlugin('')), /non-empty metadata\.id/);
+
+    const noName = makePlugin('core.x');
+    noName.metadata.name = ' ';
+    assert.throws(() => registry.register(noName), /needs a non-empty name/);
+
+    const noVersion = makePlugin('core.y');
+    noVersion.metadata.version = '';
+    assert.throws(() => registry.register(noVersion), /needs a version/);
   });
 
-  test('rejects tools without a function definition or name', () => {
+  test('rejects unknown capability declarations', () => {
     const registry = new PluginRegistry();
-    const broken = makeTool('x');
-    if (broken.definition.type === 'function') broken.definition.function.name = '';
+    const bogus = makePlugin('core.z', ['time-travel' as PluginCapability]);
 
     assert.throws(
-      () => registry.register(makePlugin('bad', [broken])),
-      /without a name/,
+      () => registry.register(bogus),
+      /unknown capability "time-travel"/,
     );
+  });
+
+  test('does NOT invoke the register() hook — that is the loader\'s job', () => {
+    const registry = new PluginRegistry();
+    let hookCalls = 0;
+
+    registry.register(makePlugin('core.alpha', [], () => hookCalls++));
+
+    assert.equal(hookCalls, 0, 'registry must stay a passive catalog');
   });
 });
 
-describe('tool aggregation', () => {
-  test('aggregates tool definitions across plugins', () => {
+describe('catalog queries', () => {
+  test('list() returns all registered plugins', () => {
     const registry = new PluginRegistry();
-    registry.register(makePlugin('alpha', [makeTool('a_one'), makeTool('a_two')]));
-    registry.register(makePlugin('beta', [makeTool('b_one')]));
+    registry.register(makePlugin('core.a'));
+    registry.register(makePlugin('core.b'));
 
-    const names = registry
-      .getToolDefinitions()
-      .map((def) => (def.type === 'function' ? def.function.name : '?'));
-    assert.deepEqual(names.sort(), ['a_one', 'a_two', 'b_one']);
-  });
-
-  test('tool collisions across plugins name both plugins', () => {
-    const registry = new PluginRegistry();
-    registry.register(makePlugin('alpha', [makeTool('shared_tool')]));
-
-    assert.throws(
-      () => registry.register(makePlugin('beta', [makeTool('shared_tool')])),
-      /"shared_tool" from plugin "beta" collides .* plugin "alpha"/,
+    assert.deepEqual(
+      registry.list().map((p) => p.metadata.id),
+      ['core.a', 'core.b'],
     );
   });
 
-  test('registration is atomic: a colliding plugin contributes nothing', () => {
+  test('listByCapability() filters on declared capabilities', () => {
     const registry = new PluginRegistry();
-    registry.register(makePlugin('alpha', [makeTool('taken')]));
-
-    assert.throws(() =>
-      registry.register(makePlugin('beta', [makeTool('fresh'), makeTool('taken')])),
+    registry.register(makePlugin('core.tools', [PluginCapability.ToolProvider]));
+    registry.register(
+      makePlugin('core.multi', [
+        PluginCapability.ToolProvider,
+        PluginCapability.PromptProvider,
+      ]),
     );
+    registry.register(makePlugin('core.plain'));
 
-    assert.equal(registry.hasPlugin('beta'), false, 'plugin must not be installed');
-    assert.equal(registry.hasTool('fresh'), false, 'no partial tool registration');
-  });
-
-  test('duplicate tool names within one plugin are rejected', () => {
-    const registry = new PluginRegistry();
-
-    assert.throws(
-      () => registry.register(makePlugin('alpha', [makeTool('dup'), makeTool('dup')])),
-      /duplicate tool names/,
+    assert.deepEqual(
+      registry.listByCapability(PluginCapability.ToolProvider).map((p) => p.metadata.id),
+      ['core.tools', 'core.multi'],
     );
+    assert.deepEqual(
+      registry.listByCapability(PluginCapability.PromptProvider).map((p) => p.metadata.id),
+      ['core.multi'],
+    );
+    assert.deepEqual(registry.listByCapability(PluginCapability.EventSubscriber), []);
   });
 });
 
-describe('tool execution', () => {
-  test('dispatches to the owning plugin, sync or async', async () => {
-    const registry = new PluginRegistry();
-    const asyncTool: PluginTool = {
-      definition: {
-        type: 'function',
-        function: { name: 'async_tool', description: 'async', parameters: { type: 'object', properties: {} } },
+describe('capability contracts', () => {
+  test('a plugin can implement a provider interface alongside AgentPlugin', async () => {
+    // Compile-time proof the contracts compose: a ToolProvider plugin.
+    const plugin: AgentPlugin & ToolProvider = {
+      metadata: {
+        id: 'core.time',
+        name: 'Time Tools',
+        version: '1.0.0',
+        description: 'provides time tools',
+        author: 'tests',
+        capabilities: [PluginCapability.ToolProvider],
       },
-      execute: async () => 'async-result',
+      register() {},
+      getTools() {
+        return [
+          {
+            definition: {
+              type: 'function',
+              function: {
+                name: 'get_current_time',
+                description: 'test',
+                parameters: { type: 'object', properties: {} },
+              },
+            },
+            execute: () => 'now',
+          },
+        ];
+      },
     };
-    registry.register(makePlugin('alpha', [makeTool('sync_tool'), asyncTool]));
 
-    assert.equal(await registry.executeTool('sync_tool'), 'sync_tool-result');
-    assert.equal(await registry.executeTool('async_tool'), 'async-result');
-  });
-
-  test('receives the arguments the model sent', async () => {
     const registry = new PluginRegistry();
-    let received: unknown;
-    const tool: PluginTool = {
-      definition: {
-        type: 'function',
-        function: { name: 'echo', description: 'echo', parameters: { type: 'object', properties: {} } },
-      },
-      execute: (args) => {
-        received = args;
-        return 'ok';
-      },
-    };
-    registry.register(makePlugin('alpha', [tool]));
+    registry.register(plugin);
 
-    await registry.executeTool('echo', { city: 'Chennai' });
-    assert.deepEqual(received, { city: 'Chennai' });
-  });
-
-  test('unknown tools throw instead of dispatching blindly', async () => {
-    const registry = new PluginRegistry();
-
-    await assert.rejects(
-      () => registry.executeTool('hallucinated_tool'),
-      /No plugin provides a tool named "hallucinated_tool"/,
-    );
+    const [provider] = registry.listByCapability(PluginCapability.ToolProvider);
+    const tools = (provider as AgentPlugin & ToolProvider).getTools();
+    assert.equal(tools.length, 1);
+    assert.equal(await tools[0]?.execute({}), 'now');
   });
 });
