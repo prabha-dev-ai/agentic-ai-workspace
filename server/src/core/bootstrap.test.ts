@@ -15,6 +15,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.agentRuntimeFactory).createRuntime, 'function');
     assert.equal(typeof container.get(TOKENS.agentLifecycle).spawn, 'function');
     assert.equal(typeof container.get(TOKENS.eventBus).publish, 'function');
+    assert.equal(typeof container.get(TOKENS.agentRegistry).register, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeStore).add, 'function');
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
   });

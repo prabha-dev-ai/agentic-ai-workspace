@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
 import { EventBus } from './events/EventBus.ts';
+import { AgentRegistry } from './agents/AgentRegistry.ts';
 import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
@@ -51,6 +52,10 @@ export async function bootstrap(
   const services = new ServiceCollection();
 
   services.registerSingleton(TOKENS.eventBus, () => eventBus);
+
+  services.registerSingleton(TOKENS.agentRegistry, (container) =>
+    new AgentRegistry(container.get(TOKENS.eventBus)),
+  );
   services.registerSingleton(TOKENS.pluginRegistry, () => pluginRegistry);
   services.registerSingleton(TOKENS.pluginLoader, () => pluginLoader);
 
@@ -93,6 +98,7 @@ export async function bootstrap(
       container.get(TOKENS.openaiClient),
       container.get(TOKENS.pluginLoader),
       container.get(TOKENS.eventBus),
+      container.get(TOKENS.agentRegistry),
     ),
   );
 

@@ -180,6 +180,63 @@ describe('runtime lifecycle integration', () => {
     assert.ok(seen.every((event) => event.correlationId === lifecycle?.id));
   });
 
+  test('with a registry, the runtime registers its agent and events drive its state', async () => {
+    const { EventBus } = await import('../core/events/EventBus.ts');
+    const { AgentRegistry } = await import('../core/agents/AgentRegistry.ts');
+    const { AgentStatus } = await import('../core/agents/AgentStatus.ts');
+
+    const bus = new EventBus();
+    const registry = new AgentRegistry(bus);
+
+    const runtime = createAgentRuntime(agent, {
+      client: answeringClient(),
+      tools: noTools,
+      eventBus: bus,
+      agentRegistry: registry,
+    });
+
+    const [descriptor] = registry.list();
+    assert.ok(descriptor, 'runtime registered its agent on creation');
+    assert.equal(descriptor.name, 'lifecycle-integration');
+    assert.equal(descriptor.type, 'conversational');
+    assert.equal(descriptor.state, AgentStatus.Active);
+
+    await runtime.run('hello');
+    assert.equal(
+      registry.get(descriptor.id).state,
+      AgentStatus.Completed,
+      'state updated via events, not direct calls',
+    );
+
+    const failing = createAgentRuntime(agent, {
+      client: {
+        chat: {
+          completions: {
+            create: async () => {
+              throw new Error('down');
+            },
+          },
+        },
+      } as unknown as OpenAI,
+      tools: noTools,
+      eventBus: bus,
+      agentRegistry: registry,
+    });
+
+    await assert.rejects(() => failing.run('x'));
+    const failedDescriptor = registry
+      .list()
+      .find((entry) => entry.id !== descriptor.id);
+    assert.equal(failedDescriptor?.state, AgentStatus.Failed);
+    assert.deepEqual(registry.getDiagnostics(), {
+      active: 0,
+      completed: 1,
+      failed: 1,
+      cancelled: 0,
+      total: 2,
+    });
+  });
+
   test('every run gets its own lifecycle instance', async () => {
     const runtime = createAgentRuntime(agent, {
       client: answeringClient(),

@@ -12,6 +12,7 @@ import type { ConversationMemory } from '../memory/memory.types.ts';
 import type { ContextWindow } from '../memory/context-manager.types.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 import type { EventBus } from '../core/events/EventBus.ts';
+import type { AgentRegistry } from '../core/agents/AgentRegistry.ts';
 
 // The runtime binds an immutable Agent definition to live resources (the
 // LLM client) and executes conversations with it. Definition = who the
@@ -27,16 +28,18 @@ export interface AgentRuntimeOptions {
   tools: ToolSource;
   /** When provided, lifecycle transitions publish framework events. */
   eventBus?: EventBus;
+  /** When provided, the runtime registers its agent on creation. */
+  agentRegistry?: AgentRegistry;
   /** Policy for what the model sees per turn. Default: sliding window of 10. */
   contextWindow?: ContextWindow;
   /** Optional knowledge base. When set, every turn retrieves against it. */
   knowledgeStore?: KnowledgeStore;
 }
 
-/** Options a caller may choose; client, tools and bus are the factory's job. */
+/** Options a caller may choose; the rest are the factory's job. */
 export type AgentRuntimeCreationOptions = Omit<
   AgentRuntimeOptions,
-  'client' | 'tools' | 'eventBus'
+  'client' | 'tools' | 'eventBus' | 'agentRegistry'
 >;
 
 // The container-facing entry point: binds the process-wide client and
@@ -50,6 +53,7 @@ export function createAgentRuntimeFactory(
   client: OpenAI,
   tools: ToolSource,
   eventBus?: EventBus,
+  agentRegistry?: AgentRegistry,
 ): AgentRuntimeFactory {
   return {
     createRuntime(agent: Agent, options: AgentRuntimeCreationOptions = {}) {
@@ -58,6 +62,7 @@ export function createAgentRuntimeFactory(
         client,
         tools,
         ...(eventBus !== undefined ? { eventBus } : {}),
+        ...(agentRegistry !== undefined ? { agentRegistry } : {}),
       });
     },
   };
@@ -79,9 +84,19 @@ export function createAgentRuntime(
 ): AgentRuntime {
   const { client, tools } = options;
   const memory = createConversationMemory();
+
+  // With a registry present, the agent registers itself and its lifecycle
+  // events carry the registry id as source — that label is how the
+  // registry tracks state from the bus without any direct calls.
+  const registryHandle = options.agentRegistry?.register({
+    name: agent.name,
+    type: 'conversational',
+    metadata: { description: agent.description, model: agent.model },
+  });
+
   const lifecycles = new LifecycleManager({
     ...(options.eventBus !== undefined ? { eventBus: options.eventBus } : {}),
-    source: `agent:${agent.name}`,
+    source: `agent:${registryHandle?.id ?? agent.name}`,
   });
   const contextWindow: ContextWindow =
     options.contextWindow ?? { strategy: 'sliding-window', size: 10 };
