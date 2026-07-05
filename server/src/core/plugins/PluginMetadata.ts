@@ -8,9 +8,16 @@ export interface PluginMetadata {
   id: string;
   /** Human-readable display name. */
   name: string;
+  /** Plugin version, semver (e.g. "1.0.0"). */
   version: string;
   description: string;
   author: string;
+  /** Optional project or documentation URL. */
+  homepage?: string;
+  /** Optional SPDX license identifier, e.g. "MIT". */
+  license?: string;
+  /** Oldest framework version this plugin supports, semver. */
+  minimumFrameworkVersion?: string;
   /** What this plugin claims to provide. Backed by the matching interfaces. */
   capabilities: PluginCapability[];
 }

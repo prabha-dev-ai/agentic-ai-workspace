@@ -1,14 +1,21 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PluginRegistry } from './PluginRegistry.ts';
-import { PluginCapability } from './PluginCapability.ts';
-import type { AgentPlugin } from './AgentPlugin.ts';
-import type { ToolProvider } from './PluginCapability.ts';
+// Importing via the barrel on purpose: tests exercise the same public
+// surface plugins will use, so a broken export fails here.
+import {
+  PluginRegistry,
+  PluginCapability,
+  PluginError,
+  DuplicatePluginError,
+  PluginNotFoundError,
+  PluginValidationError,
+} from './index.ts';
+import type { AgentPlugin, PluginMetadata, ToolProvider } from './index.ts';
 
 function makePlugin(
   id: string,
-  capabilities: PluginCapability[] = [],
-  onRegister?: () => void,
+  overrides: Partial<PluginMetadata> = {},
+  hooks: { onRegister?: () => void; onDispose?: () => void } = {},
 ): AgentPlugin {
   return {
     metadata: {
@@ -17,66 +24,128 @@ function makePlugin(
       version: '1.0.0',
       description: 'test plugin',
       author: 'tests',
-      capabilities,
+      capabilities: [],
+      ...overrides,
     },
     register() {
-      onRegister?.();
+      hooks.onRegister?.();
+    },
+    dispose() {
+      hooks.onDispose?.();
     },
   };
 }
 
-describe('plugin registration', () => {
-  test('registers and retrieves plugins by id', () => {
+describe('metadata validation', () => {
+  test('rejects empty id, name, and malformed versions', () => {
+    const registry = new PluginRegistry();
+
+    assert.throws(() => registry.register(makePlugin('')), PluginValidationError);
+    assert.throws(
+      () => registry.register(makePlugin('core.x', { name: ' ' })),
+      /metadata\.name/,
+    );
+    assert.throws(
+      () => registry.register(makePlugin('core.x', { version: 'one' })),
+      /not a valid semver version/,
+    );
+    assert.throws(
+      () => registry.register(makePlugin('core.x', { minimumFrameworkVersion: 'latest' })),
+      /minimumFrameworkVersion/,
+    );
+  });
+
+  test('accepts full metadata including optional fields', () => {
+    const registry = new PluginRegistry();
+
+    registry.register(
+      makePlugin('core.full', {
+        homepage: 'https://example.com',
+        license: 'MIT',
+        minimumFrameworkVersion: '1.0.0',
+        version: '2.1.0-beta.1',
+        capabilities: [PluginCapability.ToolProvider],
+      }),
+    );
+
+    assert.equal(registry.exists('core.full'), true);
+  });
+
+  test('rejects unknown capability declarations', () => {
+    const registry = new PluginRegistry();
+    const bogus = makePlugin('core.z', {
+      capabilities: ['time-travel' as PluginCapability],
+    });
+
+    assert.throws(() => registry.register(bogus), /unknown capability "time-travel"/);
+  });
+
+  test('validation errors carry the plugin id and inherit PluginError', () => {
+    const registry = new PluginRegistry();
+
+    try {
+      registry.register(makePlugin('core.bad', { version: 'x' }));
+      assert.fail('should have thrown');
+    } catch (error) {
+      assert.ok(error instanceof PluginValidationError);
+      assert.ok(error instanceof PluginError);
+      assert.equal((error as PluginValidationError).pluginId, 'core.bad');
+    }
+  });
+});
+
+describe('registration and removal', () => {
+  test('register/exists/get round trip', () => {
     const registry = new PluginRegistry();
     const plugin = makePlugin('core.alpha');
 
     registry.register(plugin);
 
+    assert.equal(registry.exists('core.alpha'), true);
     assert.equal(registry.get('core.alpha'), plugin);
-    assert.equal(registry.get('core.missing'), undefined);
   });
 
-  test('rejects duplicate plugin ids', () => {
+  test('duplicate ids throw DuplicatePluginError', () => {
     const registry = new PluginRegistry();
     registry.register(makePlugin('core.alpha'));
 
     assert.throws(
       () => registry.register(makePlugin('core.alpha')),
-      /"core\.alpha" is already registered/,
+      DuplicatePluginError,
     );
   });
 
-  test('rejects invalid metadata with specific errors', () => {
+  test('get() of a missing plugin throws PluginNotFoundError', () => {
     const registry = new PluginRegistry();
 
-    assert.throws(() => registry.register(makePlugin('')), /non-empty metadata\.id/);
-
-    const noName = makePlugin('core.x');
-    noName.metadata.name = ' ';
-    assert.throws(() => registry.register(noName), /needs a non-empty name/);
-
-    const noVersion = makePlugin('core.y');
-    noVersion.metadata.version = '';
-    assert.throws(() => registry.register(noVersion), /needs a version/);
+    assert.throws(() => registry.get('core.ghost'), PluginNotFoundError);
   });
 
-  test('rejects unknown capability declarations', () => {
+  test('unregister removes the plugin; unregistering twice throws', () => {
     const registry = new PluginRegistry();
-    const bogus = makePlugin('core.z', ['time-travel' as PluginCapability]);
+    registry.register(makePlugin('core.alpha'));
 
-    assert.throws(
-      () => registry.register(bogus),
-      /unknown capability "time-travel"/,
+    registry.unregister('core.alpha');
+    assert.equal(registry.exists('core.alpha'), false);
+
+    assert.throws(() => registry.unregister('core.alpha'), PluginNotFoundError);
+  });
+
+  test('the registry never invokes lifecycle hooks — that is the loader\'s job', () => {
+    const registry = new PluginRegistry();
+    let registerCalls = 0;
+    let disposeCalls = 0;
+
+    registry.register(
+      makePlugin('core.alpha', {}, {
+        onRegister: () => registerCalls++,
+        onDispose: () => disposeCalls++,
+      }),
     );
-  });
+    registry.unregister('core.alpha');
 
-  test('does NOT invoke the register() hook — that is the loader\'s job', () => {
-    const registry = new PluginRegistry();
-    let hookCalls = 0;
-
-    registry.register(makePlugin('core.alpha', [], () => hookCalls++));
-
-    assert.equal(hookCalls, 0, 'registry must stay a passive catalog');
+    assert.equal(registerCalls, 0, 'register() hook must not run');
+    assert.equal(disposeCalls, 0, 'dispose() hook must not run');
   });
 });
 
@@ -86,20 +155,18 @@ describe('catalog queries', () => {
     registry.register(makePlugin('core.a'));
     registry.register(makePlugin('core.b'));
 
-    assert.deepEqual(
-      registry.list().map((p) => p.metadata.id),
-      ['core.a', 'core.b'],
-    );
+    assert.deepEqual(registry.list().map((p) => p.metadata.id), ['core.a', 'core.b']);
   });
 
   test('listByCapability() filters on declared capabilities', () => {
     const registry = new PluginRegistry();
-    registry.register(makePlugin('core.tools', [PluginCapability.ToolProvider]));
     registry.register(
-      makePlugin('core.multi', [
-        PluginCapability.ToolProvider,
-        PluginCapability.PromptProvider,
-      ]),
+      makePlugin('core.tools', { capabilities: [PluginCapability.ToolProvider] }),
+    );
+    registry.register(
+      makePlugin('core.multi', {
+        capabilities: [PluginCapability.ToolProvider, PluginCapability.AgentProvider],
+      }),
     );
     registry.register(makePlugin('core.plain'));
 
@@ -108,10 +175,10 @@ describe('catalog queries', () => {
       ['core.tools', 'core.multi'],
     );
     assert.deepEqual(
-      registry.listByCapability(PluginCapability.PromptProvider).map((p) => p.metadata.id),
+      registry.listByCapability(PluginCapability.AgentProvider).map((p) => p.metadata.id),
       ['core.multi'],
     );
-    assert.deepEqual(registry.listByCapability(PluginCapability.EventSubscriber), []);
+    assert.deepEqual(registry.listByCapability(PluginCapability.WorkflowProvider), []);
   });
 });
 
@@ -125,6 +192,7 @@ describe('capability contracts', () => {
         version: '1.0.0',
         description: 'provides time tools',
         author: 'tests',
+        license: 'MIT',
         capabilities: [PluginCapability.ToolProvider],
       },
       register() {},

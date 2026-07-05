@@ -1,0 +1,36 @@
+// The plugin API surface. Plugins (and framework integration code) import
+// from this barrel only — the individual files are implementation layout.
+
+export type { AgentPlugin } from './AgentPlugin.ts';
+export type { PluginContext } from './PluginContext.ts';
+export type { PluginMetadata } from './PluginMetadata.ts';
+
+export { PluginCapability } from './PluginCapability.ts';
+export type {
+  ToolContribution,
+  ToolProvider,
+  PromptContribution,
+  PromptProvider,
+  RetrieverContribution,
+  RetrieverProvider,
+  MemoryMessage,
+  MemoryStore,
+  MemoryProvider,
+  ServiceProvider,
+  FrameworkEvent,
+  EventSubscriber,
+  WorkflowStep,
+  WorkflowContribution,
+  WorkflowProvider,
+  AgentContribution,
+  AgentProvider,
+} from './PluginCapability.ts';
+
+export { PluginRegistry } from './PluginRegistry.ts';
+
+export {
+  PluginError,
+  DuplicatePluginError,
+  PluginNotFoundError,
+  PluginValidationError,
+} from './PluginErrors.ts';
