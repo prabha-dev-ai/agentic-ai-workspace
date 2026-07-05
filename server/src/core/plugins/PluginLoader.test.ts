@@ -373,6 +373,120 @@ describe('service provider integration', () => {
   });
 });
 
+describe('event bus integration', () => {
+  test('install and uninstall publish plugin events', async () => {
+    const { EventBus } = await import('../events/EventBus.ts');
+    const { EventType } = await import('../events/EventType.ts');
+
+    const bus = new EventBus();
+    const seen: { type: string; payload: unknown }[] = [];
+    bus.subscribe('*', (envelope) => {
+      seen.push({ type: envelope.type, payload: envelope.payload });
+    });
+
+    const loader = new PluginLoader(new PluginRegistry(), bus);
+    await loader.install(makeToolPlugin('core.a', []));
+    await loader.uninstall('core.a');
+
+    assert.deepEqual(
+      seen.map((event) => event.type),
+      [EventType.PluginInstalled, EventType.PluginUninstalled],
+    );
+    assert.deepEqual(seen[0]?.payload, {
+      pluginId: 'core.a',
+      name: 'Plugin core.a',
+      version: '1.0.0',
+    });
+  });
+
+  test('a failed install publishes no event', async () => {
+    const { EventBus } = await import('../events/EventBus.ts');
+
+    const bus = new EventBus();
+    let published = 0;
+    bus.subscribe('*', () => {
+      published++;
+    });
+
+    const loader = new PluginLoader(new PluginRegistry(), bus);
+    const broken = makeToolPlugin('core.bad', []);
+    broken.register = () => {
+      throw new Error('boom');
+    };
+
+    await assert.rejects(() => loader.install(broken));
+    assert.equal(published, 0);
+  });
+
+  test('EventSubscriber plugins receive framework events until uninstalled', async () => {
+    const { EventBus } = await import('../events/EventBus.ts');
+    const { EventType } = await import('../events/EventType.ts');
+
+    const bus = new EventBus();
+    const loader = new PluginLoader(new PluginRegistry(), bus);
+    const received: string[] = [];
+
+    const subscriberPlugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.watcher',
+        name: 'Watcher',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [PluginCapability.EventSubscriber],
+      },
+      register() {},
+      onEvent: (event: { type: string }) => {
+        received.push(event.type);
+      },
+    };
+
+    await loader.install(subscriberPlugin);
+    // The watcher sees its own installation (subscribed during harvest,
+    // PluginInstalled published after) and later plugin installs.
+    await loader.install(makeToolPlugin('core.other', []));
+
+    assert.deepEqual(received, [EventType.PluginInstalled, EventType.PluginInstalled]);
+
+    await loader.uninstall('core.watcher');
+    await loader.install(makeToolPlugin('core.late', []));
+
+    assert.equal(received.length, 2, 'unsubscribed after uninstall');
+  });
+
+  test('a throwing subscriber plugin is isolated by the bus', async () => {
+    const { EventBus } = await import('../events/EventBus.ts');
+
+    const bus = new EventBus();
+    const loader = new PluginLoader(new PluginRegistry(), bus);
+
+    const angry: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.angry',
+        name: 'Angry',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [PluginCapability.EventSubscriber],
+      },
+      register() {},
+      onEvent: () => {
+        throw new Error('subscriber tantrum');
+      },
+    };
+
+    await loader.install(angry);
+    // Its own PluginInstalled event already triggers the tantrum — and
+    // must not break the install or the loader.
+    await loader.install(makeToolPlugin('core.calm', []));
+
+    assert.ok(loader.getToolDefinitions !== undefined);
+    const failures = bus.getDiagnostics().handlerFailures;
+    assert.ok(failures.length >= 1);
+    assert.equal(failures[0]?.error, 'subscriber tantrum');
+  });
+});
+
 describe('plugin uninstall', () => {
   test('uninstall runs dispose() and releases the plugin and its tools', async () => {
     const registry = new PluginRegistry();

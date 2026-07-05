@@ -11,6 +11,7 @@ import type { Agent } from './agent.types.ts';
 import type { ConversationMemory } from '../memory/memory.types.ts';
 import type { ContextWindow } from '../memory/context-manager.types.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
+import type { EventBus } from '../core/events/EventBus.ts';
 
 // The runtime binds an immutable Agent definition to live resources (the
 // LLM client) and executes conversations with it. Definition = who the
@@ -24,16 +25,18 @@ export interface AgentRuntimeOptions {
   client: OpenAI;
   /** The tool catalog (from the plugin loader) — always injected. */
   tools: ToolSource;
+  /** When provided, lifecycle transitions publish framework events. */
+  eventBus?: EventBus;
   /** Policy for what the model sees per turn. Default: sliding window of 10. */
   contextWindow?: ContextWindow;
   /** Optional knowledge base. When set, every turn retrieves against it. */
   knowledgeStore?: KnowledgeStore;
 }
 
-/** Options a caller may choose; client and tools are the factory's job. */
+/** Options a caller may choose; client, tools and bus are the factory's job. */
 export type AgentRuntimeCreationOptions = Omit<
   AgentRuntimeOptions,
-  'client' | 'tools'
+  'client' | 'tools' | 'eventBus'
 >;
 
 // The container-facing entry point: binds the process-wide client and
@@ -46,10 +49,16 @@ export interface AgentRuntimeFactory {
 export function createAgentRuntimeFactory(
   client: OpenAI,
   tools: ToolSource,
+  eventBus?: EventBus,
 ): AgentRuntimeFactory {
   return {
     createRuntime(agent: Agent, options: AgentRuntimeCreationOptions = {}) {
-      return createAgentRuntime(agent, { ...options, client, tools });
+      return createAgentRuntime(agent, {
+        ...options,
+        client,
+        tools,
+        ...(eventBus !== undefined ? { eventBus } : {}),
+      });
     },
   };
 }
@@ -70,7 +79,10 @@ export function createAgentRuntime(
 ): AgentRuntime {
   const { client, tools } = options;
   const memory = createConversationMemory();
-  const lifecycles = new LifecycleManager();
+  const lifecycles = new LifecycleManager({
+    ...(options.eventBus !== undefined ? { eventBus: options.eventBus } : {}),
+    source: `agent:${agent.name}`,
+  });
   const contextWindow: ContextWindow =
     options.contextWindow ?? { strategy: 'sliding-window', size: 10 };
 

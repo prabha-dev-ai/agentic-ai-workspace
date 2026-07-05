@@ -42,15 +42,24 @@ export class InvalidLifecycleTransitionError extends Error {
   }
 }
 
+/** Notified after every successful transition (used to publish events). */
+export type TransitionObserver = (
+  from: AgentState,
+  to: AgentState,
+  reason?: string,
+) => void;
+
 // One agent execution's lifecycle: current state, validated transitions,
 // and a complete, timestamped history.
 export class AgentLifecycle {
   readonly id: string;
   private state: AgentState = AgentState.Created;
   private readonly history: LifecycleEvent[] = [];
+  private readonly onTransition: TransitionObserver | undefined;
 
-  constructor(id: string) {
+  constructor(id: string, onTransition?: TransitionObserver) {
     this.id = id;
+    this.onTransition = onTransition;
     this.history.push({ from: null, to: AgentState.Created, at: new Date() });
   }
 
@@ -63,13 +72,17 @@ export class AgentLifecycle {
       throw new InvalidLifecycleTransitionError(this.state, to);
     }
 
+    const from = this.state;
+
     this.history.push({
-      from: this.state,
+      from,
       to,
       at: new Date(),
       ...(reason !== undefined ? { reason } : {}),
     });
     this.state = to;
+
+    this.onTransition?.(from, to, reason);
   }
 
   /** Full transition history, oldest first. Returns a copy. */

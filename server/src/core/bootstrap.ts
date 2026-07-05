@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
+import { EventBus } from './events/EventBus.ts';
 import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
@@ -30,10 +31,14 @@ export interface BootstrapOptions {
 export async function bootstrap(
   options: BootstrapOptions = {},
 ): Promise<Container> {
+  // The bus exists before anything else so installation events are never
+  // missed by early subscriber plugins.
+  const eventBus = new EventBus();
+
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
   const pluginRegistry = new PluginRegistry();
-  const pluginLoader = new PluginLoader(pluginRegistry);
+  const pluginLoader = new PluginLoader(pluginRegistry, eventBus);
 
   const plugins = await discoverPlugins(
     options.pluginDirectory ?? DEFAULT_PLUGIN_DIRECTORY,
@@ -45,6 +50,7 @@ export async function bootstrap(
 
   const services = new ServiceCollection();
 
+  services.registerSingleton(TOKENS.eventBus, () => eventBus);
   services.registerSingleton(TOKENS.pluginRegistry, () => pluginRegistry);
   services.registerSingleton(TOKENS.pluginLoader, () => pluginLoader);
 
@@ -86,6 +92,7 @@ export async function bootstrap(
     createAgentRuntimeFactory(
       container.get(TOKENS.openaiClient),
       container.get(TOKENS.pluginLoader),
+      container.get(TOKENS.eventBus),
     ),
   );
 

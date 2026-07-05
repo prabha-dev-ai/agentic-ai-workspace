@@ -14,6 +14,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.executorService).executePlan, 'function');
     assert.equal(typeof container.get(TOKENS.agentRuntimeFactory).createRuntime, 'function');
     assert.equal(typeof container.get(TOKENS.agentLifecycle).spawn, 'function');
+    assert.equal(typeof container.get(TOKENS.eventBus).publish, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeStore).add, 'function');
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
   });
@@ -60,6 +61,17 @@ describe('framework bootstrap', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test('built-in plugin installs are published on the event bus', async () => {
+    const container = await bootstrap();
+    const bus = container.get(TOKENS.eventBus);
+
+    const diagnostics = bus.getDiagnostics();
+    assert.ok(
+      diagnostics.publishedEvents >= 1,
+      'core.time install must have been published',
+    );
   });
 
   test('installation diagnostics are available through the container', async () => {

@@ -144,6 +144,42 @@ describe('runtime lifecycle integration', () => {
     assert.equal(lifecycle?.isTerminal(), true);
   });
 
+  test('runs publish correlated framework events when a bus is provided', async () => {
+    const { EventBus } = await import('../core/events/EventBus.ts');
+    const { EventType } = await import('../core/events/EventType.ts');
+
+    const bus = new EventBus();
+    const seen: { type: string; source: string; correlationId: string }[] = [];
+    bus.subscribe('*', (envelope) => {
+      seen.push({
+        type: envelope.type,
+        source: envelope.source,
+        correlationId: envelope.correlationId,
+      });
+    });
+
+    const runtime = createAgentRuntime(agent, {
+      client: answeringClient(),
+      tools: noTools,
+      eventBus: bus,
+    });
+    await runtime.run('hello');
+
+    assert.deepEqual(
+      seen.map((event) => event.type),
+      [
+        EventType.AgentCreated,
+        EventType.AgentInitialized,
+        EventType.ExecutionStarted,
+        EventType.AgentCompleted,
+      ],
+    );
+    assert.equal(seen[0]?.source, 'agent:lifecycle-integration');
+
+    const [lifecycle] = runtime.lifecycles.list();
+    assert.ok(seen.every((event) => event.correlationId === lifecycle?.id));
+  });
+
   test('every run gets its own lifecycle instance', async () => {
     const runtime = createAgentRuntime(agent, {
       client: answeringClient(),

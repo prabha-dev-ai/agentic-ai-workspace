@@ -7,11 +7,14 @@ import {
 import type OpenAI from 'openai';
 import type { AgentPlugin } from './AgentPlugin.ts';
 import type { PluginContext } from './PluginContext.ts';
+import { EventType } from '../events/EventType.ts';
 import type { PluginRegistry } from './PluginRegistry.ts';
 import type {
   PluginContributionSummary,
   PluginInstallation,
 } from './PluginInstallation.ts';
+import type { EventBus } from '../events/EventBus.ts';
+import type { EventHandler } from '../events/EventHandler.ts';
 import type { ServiceCollection } from '../container/ServiceCollection.ts';
 import type {
   AgentContribution,
@@ -71,8 +74,14 @@ export class PluginLoader {
   // Diagnostics: what each installed plugin contributed, and when.
   private readonly installations = new Map<string, PluginInstallation>();
 
-  constructor(registry: PluginRegistry) {
+  // EventSubscriber plugins wired onto the bus, so uninstall can unwire.
+  private readonly busSubscriptions = new Map<string, EventHandler>();
+
+  private readonly eventBus: EventBus | undefined;
+
+  constructor(registry: PluginRegistry, eventBus?: EventBus) {
     this.registry = registry;
+    this.eventBus = eventBus;
   }
 
   async install(plugin: AgentPlugin): Promise<void> {
@@ -94,6 +103,17 @@ export class PluginLoader {
       this.release(plugin.metadata.id);
       throw error;
     }
+
+    this.eventBus?.publish({
+      type: EventType.PluginInstalled,
+      source: 'plugin-loader',
+      correlationId: plugin.metadata.id,
+      payload: {
+        pluginId: plugin.metadata.id,
+        name: plugin.metadata.name,
+        version: plugin.metadata.version,
+      },
+    });
   }
 
   async uninstall(id: string): Promise<void> {
@@ -102,6 +122,13 @@ export class PluginLoader {
     await plugin.dispose?.();
     this.release(id);
     this.registry.unregister(id);
+
+    this.eventBus?.publish({
+      type: EventType.PluginUninstalled,
+      source: 'plugin-loader',
+      correlationId: id,
+      payload: { pluginId: id },
+    });
   }
 
   // ---- Contribution access ------------------------------------------
@@ -244,8 +271,18 @@ export class PluginLoader {
     }
 
     if (has(PluginCapability.EventSubscriber)) {
-      this.eventSubscribers.set(id, plugin as AgentPlugin & EventSubscriber);
+      const subscriber = plugin as AgentPlugin & EventSubscriber;
+      this.eventSubscribers.set(id, subscriber);
       summary.subscribesToEvents = true;
+
+      // Activate the capability: the plugin's onEvent receives every
+      // framework event (EventEnvelope satisfies FrameworkEvent). Bus
+      // handler isolation contains a throwing subscriber.
+      if (this.eventBus) {
+        const handler: EventHandler = (envelope) => subscriber.onEvent(envelope);
+        this.busSubscriptions.set(id, handler);
+        this.eventBus.subscribe('*', handler);
+      }
     }
 
     if (has(PluginCapability.ServiceProvider)) {
@@ -309,6 +346,12 @@ export class PluginLoader {
     this.eventSubscribers.delete(pluginId);
     this.serviceProviders.delete(pluginId);
     this.installations.delete(pluginId);
+
+    const handler = this.busSubscriptions.get(pluginId);
+    if (handler && this.eventBus) {
+      this.eventBus.unsubscribe('*', handler);
+    }
+    this.busSubscriptions.delete(pluginId);
   }
 }
 
