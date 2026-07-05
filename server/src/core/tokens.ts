@@ -3,6 +3,7 @@ import { createServiceToken } from './container/ServiceDescriptor.ts';
 import type { LlmService } from '../services/llm.service.ts';
 import type { PlannerService } from '../planner/planner.service.ts';
 import type { ExecutorService } from '../executor/executor.service.ts';
+import type { AgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -13,5 +14,6 @@ export const TOKENS = {
   llmService: createServiceToken<LlmService>('llm-service'),
   plannerService: createServiceToken<PlannerService>('planner-service'),
   executorService: createServiceToken<ExecutorService>('executor-service'),
+  agentRuntimeFactory: createServiceToken<AgentRuntimeFactory>('agent-runtime-factory'),
   knowledgeStore: createServiceToken<KnowledgeStore>('knowledge-store'),
 } as const;

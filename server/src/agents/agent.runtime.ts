@@ -1,5 +1,4 @@
 import type OpenAI from 'openai';
-import { openaiClient } from '../config/openai-client.ts';
 import { createConversationMemory } from '../memory/conversation-memory.ts';
 import { buildContext, formatRetrievedKnowledge } from '../memory/context-manager.ts';
 import { retrieveDocuments } from '../knowledge/retriever.service.ts';
@@ -18,12 +17,29 @@ import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 // here and never on the shared definition.
 
 export interface AgentRuntimeOptions {
-  /** Injectable for tests and future per-agent providers. */
-  client?: OpenAI;
+  /** The LLM client — always injected, never constructed here. */
+  client: OpenAI;
   /** Policy for what the model sees per turn. Default: sliding window of 10. */
   contextWindow?: ContextWindow;
   /** Optional knowledge base. When set, every turn retrieves against it. */
   knowledgeStore?: KnowledgeStore;
+}
+
+/** Runtime options a caller may choose; the client is the factory's job. */
+export type AgentRuntimeCreationOptions = Omit<AgentRuntimeOptions, 'client'>;
+
+// The container-facing entry point: binds the process-wide client once,
+// so callers create runtimes without ever touching connection concerns.
+export interface AgentRuntimeFactory {
+  createRuntime(agent: Agent, options?: AgentRuntimeCreationOptions): AgentRuntime;
+}
+
+export function createAgentRuntimeFactory(client: OpenAI): AgentRuntimeFactory {
+  return {
+    createRuntime(agent: Agent, options: AgentRuntimeCreationOptions = {}) {
+      return createAgentRuntime(agent, { ...options, client });
+    },
+  };
 }
 
 export interface AgentRuntime {
@@ -36,9 +52,9 @@ export interface AgentRuntime {
 
 export function createAgentRuntime(
   agent: Agent,
-  options: AgentRuntimeOptions = {},
+  options: AgentRuntimeOptions,
 ): AgentRuntime {
-  const client = options.client ?? openaiClient;
+  const { client } = options;
   const memory = createConversationMemory();
   const contextWindow: ContextWindow =
     options.contextWindow ?? { strategy: 'sliding-window', size: 10 };
