@@ -3,6 +3,7 @@ import { createServiceToken } from './container/ServiceDescriptor.ts';
 import type { PluginRegistry, PluginLoader } from './plugins/index.ts';
 import type { EventBus } from './events/EventBus.ts';
 import type { AgentRegistry } from './agents/AgentRegistry.ts';
+import type { MessageBus } from './communication/MessageBus.ts';
 import type { LlmService } from '../services/llm.service.ts';
 import type { PlannerService } from '../planner/planner.service.ts';
 import type { ExecutorService } from '../executor/executor.service.ts';
@@ -17,6 +18,7 @@ export const TOKENS = {
   openaiClient: createServiceToken<OpenAI>('openai-client'),
   eventBus: createServiceToken<EventBus>('event-bus'),
   agentRegistry: createServiceToken<AgentRegistry>('agent-registry'),
+  messageBus: createServiceToken<MessageBus>('message-bus'),
   pluginRegistry: createServiceToken<PluginRegistry>('plugin-registry'),
   pluginLoader: createServiceToken<PluginLoader>('plugin-loader'),
   llmService: createServiceToken<LlmService>('llm-service'),

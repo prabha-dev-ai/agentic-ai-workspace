@@ -4,6 +4,7 @@ import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
 import { EventBus } from './events/EventBus.ts';
 import { AgentRegistry } from './agents/AgentRegistry.ts';
+import { MessageBus } from './communication/MessageBus.ts';
 import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
@@ -53,8 +54,15 @@ export async function bootstrap(
 
   services.registerSingleton(TOKENS.eventBus, () => eventBus);
 
+  services.registerSingleton(TOKENS.messageBus, (container) =>
+    new MessageBus(container.get(TOKENS.eventBus)),
+  );
+
   services.registerSingleton(TOKENS.agentRegistry, (container) =>
-    new AgentRegistry(container.get(TOKENS.eventBus)),
+    new AgentRegistry(
+      container.get(TOKENS.eventBus),
+      container.get(TOKENS.messageBus),
+    ),
   );
   services.registerSingleton(TOKENS.pluginRegistry, () => pluginRegistry);
   services.registerSingleton(TOKENS.pluginLoader, () => pluginLoader);

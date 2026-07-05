@@ -5,6 +5,7 @@ import type { AgentDescriptor } from './AgentDescriptor.ts';
 import type { AgentHandle } from './AgentHandle.ts';
 import type { EventBus } from '../events/EventBus.ts';
 import type { EventEnvelope } from '../events/EventEnvelope.ts';
+import type { MessageBus } from '../communication/MessageBus.ts';
 
 /** What callers provide; id and timestamps are the registry's job. */
 export interface AgentRegistration {
@@ -43,8 +44,10 @@ const EVENT_STATUS: Partial<Record<string, AgentStatus>> = {
 // listens; nothing calls the registry to report state directly.
 export class AgentRegistry {
   private readonly agents = new Map<string, AgentDescriptor>();
+  private readonly messageBus: MessageBus | undefined;
 
-  constructor(eventBus?: EventBus) {
+  constructor(eventBus?: EventBus, messageBus?: MessageBus) {
+    this.messageBus = messageBus;
     eventBus?.subscribe('*', (envelope) => {
       this.applyEvent(envelope);
     });
@@ -78,6 +81,12 @@ export class AgentRegistry {
 
     this.agents.set(id, descriptor);
 
+    // Every registered agent can be messaged: its mailbox exists for
+    // exactly as long as its registration.
+    if (this.messageBus && !this.messageBus.hasMailbox(id)) {
+      this.messageBus.registerMailbox(id);
+    }
+
     return {
       id,
       getDescriptor: () => this.get(id),
@@ -88,6 +97,10 @@ export class AgentRegistry {
   unregister(id: string): void {
     if (!this.agents.delete(id)) {
       throw new Error(`Agent "${id}" is not registered.`);
+    }
+
+    if (this.messageBus?.hasMailbox(id)) {
+      this.messageBus.unregisterMailbox(id);
     }
   }
 

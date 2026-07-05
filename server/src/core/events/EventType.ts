@@ -14,6 +14,9 @@ export const EventType = {
   AgentCancelled: 'agent.cancelled',
   PluginInstalled: 'plugin.installed',
   PluginUninstalled: 'plugin.uninstalled',
+  MessageSent: 'message.sent',
+  MessageDelivered: 'message.delivered',
+  MessageFailed: 'message.failed',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];

@@ -16,6 +16,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.agentLifecycle).spawn, 'function');
     assert.equal(typeof container.get(TOKENS.eventBus).publish, 'function');
     assert.equal(typeof container.get(TOKENS.agentRegistry).register, 'function');
+    assert.equal(typeof container.get(TOKENS.messageBus).send, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeStore).add, 'function');
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
   });
@@ -73,6 +74,16 @@ describe('framework bootstrap', () => {
       diagnostics.publishedEvents >= 1,
       'core.time install must have been published',
     );
+  });
+
+  test('agents registered through the container registry get mailboxes', async () => {
+    const container = await bootstrap();
+    const registry = container.get(TOKENS.agentRegistry);
+    const messageBus = container.get(TOKENS.messageBus);
+
+    registry.register({ id: 'wired', name: 'Wired', type: 'test' });
+
+    assert.equal(messageBus.hasMailbox('wired'), true);
   });
 
   test('installation diagnostics are available through the container', async () => {
