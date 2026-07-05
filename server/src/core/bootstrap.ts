@@ -6,6 +6,7 @@ import { EventBus } from './events/EventBus.ts';
 import { AgentRegistry } from './agents/AgentRegistry.ts';
 import { MessageBus } from './communication/MessageBus.ts';
 import { DelegationManager } from './delegation/DelegationManager.ts';
+import { SupervisorAgent } from './supervisor/SupervisorAgent.ts';
 import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
@@ -70,6 +71,14 @@ export async function bootstrap(
     new DelegationManager({
       agentRegistry: container.get(TOKENS.agentRegistry),
       messageBus: container.get(TOKENS.messageBus),
+      eventBus: container.get(TOKENS.eventBus),
+    }),
+  );
+
+  services.registerSingleton(TOKENS.supervisorAgent, (container) =>
+    new SupervisorAgent({
+      agentRegistry: container.get(TOKENS.agentRegistry),
+      delegationManager: container.get(TOKENS.delegationManager),
       eventBus: container.get(TOKENS.eventBus),
     }),
   );

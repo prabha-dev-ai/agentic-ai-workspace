@@ -18,6 +18,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.agentRegistry).register, 'function');
     assert.equal(typeof container.get(TOKENS.messageBus).send, 'function');
     assert.equal(typeof container.get(TOKENS.delegationManager).createTask, 'function');
+    assert.equal(typeof container.get(TOKENS.supervisorAgent).submitWork, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeStore).add, 'function');
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
   });
