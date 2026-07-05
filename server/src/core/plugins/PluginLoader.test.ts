@@ -4,6 +4,7 @@ import {
   PluginLoader,
   PluginRegistry,
   PluginCapability,
+  PluginNotFoundError,
   PluginValidationError,
 } from './index.ts';
 import type { AgentPlugin, ToolProvider, ToolContribution } from './index.ts';
@@ -235,6 +236,84 @@ describe('generalized contributions', () => {
     await assert.rejects(() => loader.install(plugin), PluginValidationError);
     assert.equal(registry.exists('core.halfway'), false);
     assert.deepEqual(loader.getPrompts(), [], 'earlier-kind contributions rolled back');
+  });
+});
+
+describe('installation diagnostics', () => {
+  test('records every contribution type in the installation summary', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    const plugin: AgentPlugin & Record<string, unknown> = {
+      metadata: {
+        id: 'core.everything',
+        name: 'Everything',
+        version: '1.0.0',
+        description: 't',
+        author: 'tests',
+        capabilities: [
+          PluginCapability.ToolProvider,
+          PluginCapability.PromptProvider,
+          PluginCapability.RetrieverProvider,
+          PluginCapability.WorkflowProvider,
+          PluginCapability.AgentProvider,
+          PluginCapability.MemoryProvider,
+          PluginCapability.ServiceProvider,
+          PluginCapability.EventSubscriber,
+        ],
+      },
+      register() {},
+      getTools: () => [makeTool('t_tool')],
+      getPrompts: () => [{ name: 'p_prompt', content: 'x' }],
+      getRetrievers: () => [{ name: 'r_retriever', retrieve: () => [] }],
+      getWorkflows: () => [{ name: 'w_workflow', description: 'x', steps: [] }],
+      getAgents: () => [{ name: 'a_agent', description: 'x', systemPrompt: 'x' }],
+      createMemoryStore: () => ({ append() {}, getHistory: () => [], clear() {} }),
+      registerServices() {},
+      onEvent() {},
+    };
+
+    const before = new Date();
+    await loader.install(plugin);
+
+    const installation = loader.getInstallation('core.everything');
+    assert.deepEqual(installation.contributions, {
+      tools: ['t_tool'],
+      prompts: ['p_prompt'],
+      retrievers: ['r_retriever'],
+      workflows: ['w_workflow'],
+      agents: ['a_agent'],
+      providesMemory: true,
+      providesServices: true,
+      subscribesToEvents: true,
+    });
+    assert.ok(installation.installedAt >= before, 'install time recorded');
+    assert.equal(loader.listInstallations().length, 1);
+  });
+
+  test('diagnostics for unknown plugins throw PluginNotFoundError', () => {
+    const loader = new PluginLoader(new PluginRegistry());
+
+    assert.throws(() => loader.getInstallation('core.ghost'), PluginNotFoundError);
+  });
+
+  test('failed installs leave no installation record', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    const plugin = makeToolPlugin('core.bad', [makeTool('x')]);
+    plugin.register = () => {
+      throw new Error('boom');
+    };
+
+    await assert.rejects(() => loader.install(plugin));
+    assert.deepEqual(loader.listInstallations(), []);
+  });
+
+  test('uninstall removes the installation record', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    await loader.install(makeToolPlugin('core.a', [makeTool('a_tool')]));
+
+    await loader.uninstall('core.a');
+
+    assert.deepEqual(loader.listInstallations(), []);
+    assert.throws(() => loader.getInstallation('core.a'), PluginNotFoundError);
   });
 });
 

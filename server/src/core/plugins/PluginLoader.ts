@@ -1,9 +1,17 @@
 import { PluginCapability } from './PluginCapability.ts';
-import { PluginError, PluginValidationError } from './PluginErrors.ts';
+import {
+  PluginError,
+  PluginNotFoundError,
+  PluginValidationError,
+} from './PluginErrors.ts';
 import type OpenAI from 'openai';
 import type { AgentPlugin } from './AgentPlugin.ts';
 import type { PluginContext } from './PluginContext.ts';
 import type { PluginRegistry } from './PluginRegistry.ts';
+import type {
+  PluginContributionSummary,
+  PluginInstallation,
+} from './PluginInstallation.ts';
 import type { ServiceCollection } from '../container/ServiceCollection.ts';
 import type {
   AgentContribution,
@@ -60,6 +68,9 @@ export class PluginLoader {
   private readonly eventSubscribers = new Map<string, EventSubscriber>();
   private readonly serviceProviders = new Map<string, ServiceProviderLike>();
 
+  // Diagnostics: what each installed plugin contributed, and when.
+  private readonly installations = new Map<string, PluginInstallation>();
+
   constructor(registry: PluginRegistry) {
     this.registry = registry;
   }
@@ -71,7 +82,12 @@ export class PluginLoader {
     try {
       validateDeclaredCapabilities(plugin);
       await plugin.register(createContext(plugin));
-      this.harvest(plugin);
+
+      this.installations.set(plugin.metadata.id, {
+        pluginId: plugin.metadata.id,
+        installedAt: new Date(),
+        contributions: this.harvest(plugin),
+      });
     } catch (error) {
       // Atomic install: a plugin that failed half-way is not installed.
       this.registry.unregister(plugin.metadata.id);
@@ -130,6 +146,22 @@ export class PluginLoader {
     return [...this.memoryProviders.values()];
   }
 
+  /** Diagnostics: what a specific installed plugin contributed. */
+  getInstallation(pluginId: string): PluginInstallation {
+    const installation = this.installations.get(pluginId);
+
+    if (!installation) {
+      throw new PluginNotFoundError(pluginId);
+    }
+
+    return installation;
+  }
+
+  /** Diagnostics: every installation, in install order. */
+  listInstallations(): PluginInstallation[] {
+    return [...this.installations.values()];
+  }
+
   getEventSubscribers(): EventSubscriber[] {
     return [...this.eventSubscribers.values()];
   }
@@ -156,14 +188,25 @@ export class PluginLoader {
 
   // ---- Harvesting ----------------------------------------------------
 
-  private harvest(plugin: AgentPlugin): void {
+  private harvest(plugin: AgentPlugin): PluginContributionSummary {
     const { id, capabilities } = plugin.metadata;
     const has = (capability: PluginCapability) =>
       capabilities.includes(capability);
 
+    const summary: PluginContributionSummary = {
+      tools: [],
+      prompts: [],
+      retrievers: [],
+      workflows: [],
+      agents: [],
+      providesMemory: false,
+      providesServices: false,
+      subscribesToEvents: false,
+    };
+
     if (has(PluginCapability.ToolProvider)) {
       const contributions = (plugin as AgentPlugin & ToolProvider).getTools();
-      this.harvestNamed(
+      summary.tools = this.harvestNamed(
         this.tools,
         'tool',
         id,
@@ -173,39 +216,44 @@ export class PluginLoader {
 
     if (has(PluginCapability.PromptProvider)) {
       const contributions = (plugin as AgentPlugin & PromptProvider).getPrompts();
-      this.harvestNamed(this.prompts, 'prompt', id,
+      summary.prompts = this.harvestNamed(this.prompts, 'prompt', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
     if (has(PluginCapability.RetrieverProvider)) {
       const contributions = (plugin as AgentPlugin & RetrieverProvider).getRetrievers();
-      this.harvestNamed(this.retrievers, 'retriever', id,
+      summary.retrievers = this.harvestNamed(this.retrievers, 'retriever', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
     if (has(PluginCapability.WorkflowProvider)) {
       const contributions = (plugin as AgentPlugin & WorkflowProvider).getWorkflows();
-      this.harvestNamed(this.workflows, 'workflow', id,
+      summary.workflows = this.harvestNamed(this.workflows, 'workflow', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
     if (has(PluginCapability.AgentProvider)) {
       const contributions = (plugin as AgentPlugin & AgentProvider).getAgents();
-      this.harvestNamed(this.agents, 'agent', id,
+      summary.agents = this.harvestNamed(this.agents, 'agent', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
     if (has(PluginCapability.MemoryProvider)) {
       this.memoryProviders.set(id, plugin as AgentPlugin & MemoryProvider);
+      summary.providesMemory = true;
     }
 
     if (has(PluginCapability.EventSubscriber)) {
       this.eventSubscribers.set(id, plugin as AgentPlugin & EventSubscriber);
+      summary.subscribesToEvents = true;
     }
 
     if (has(PluginCapability.ServiceProvider)) {
       this.serviceProviders.set(id, plugin as AgentPlugin & ServiceProviderLike);
+      summary.providesServices = true;
     }
+
+    return summary;
   }
 
   // One harvester for every named catalog: validate ALL entries before
@@ -216,7 +264,7 @@ export class PluginLoader {
     kind: string,
     pluginId: string,
     entries: { name: string; value: T }[],
-  ): void {
+  ): string[] {
     const seen = new Set<string>();
 
     for (const { name } of entries) {
@@ -242,6 +290,8 @@ export class PluginLoader {
     for (const { name, value } of entries) {
       catalog.set(name, { value, pluginId });
     }
+
+    return entries.map((entry) => entry.name);
   }
 
   private release(pluginId: string): void {
@@ -258,6 +308,7 @@ export class PluginLoader {
     this.memoryProviders.delete(pluginId);
     this.eventSubscribers.delete(pluginId);
     this.serviceProviders.delete(pluginId);
+    this.installations.delete(pluginId);
   }
 }
 

@@ -33,6 +33,16 @@ describe('framework bootstrap', () => {
     assert.match(result, /\d{4}/, 'executing the time tool returns a real date');
   });
 
+  test('installation diagnostics are available through the container', async () => {
+    const loader = (await bootstrap()).get(TOKENS.pluginLoader);
+
+    const installations = loader.listInstallations();
+    assert.equal(installations.length, 1, 'one built-in plugin installed');
+    assert.equal(installations[0]?.pluginId, 'core.time');
+    assert.deepEqual(installations[0]?.contributions.tools, ['get_current_time']);
+    assert.equal(installations[0]?.contributions.providesServices, false);
+  });
+
   test('the OpenAI client is a process-wide singleton', async () => {
     const container = await bootstrap();
 

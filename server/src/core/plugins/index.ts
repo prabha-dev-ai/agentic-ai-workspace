@@ -28,6 +28,10 @@ export type {
 
 export { PluginRegistry } from './PluginRegistry.ts';
 export { PluginLoader } from './PluginLoader.ts';
+export type {
+  PluginContributionSummary,
+  PluginInstallation,
+} from './PluginInstallation.ts';
 
 export {
   PluginError,
