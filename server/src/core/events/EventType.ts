@@ -17,6 +17,12 @@ export const EventType = {
   MessageSent: 'message.sent',
   MessageDelivered: 'message.delivered',
   MessageFailed: 'message.failed',
+  TaskCreated: 'task.created',
+  TaskAssigned: 'task.assigned',
+  TaskStarted: 'task.started',
+  TaskCompleted: 'task.completed',
+  TaskFailed: 'task.failed',
+  TaskCancelled: 'task.cancelled',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];

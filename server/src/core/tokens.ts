@@ -4,6 +4,7 @@ import type { PluginRegistry, PluginLoader } from './plugins/index.ts';
 import type { EventBus } from './events/EventBus.ts';
 import type { AgentRegistry } from './agents/AgentRegistry.ts';
 import type { MessageBus } from './communication/MessageBus.ts';
+import type { DelegationManager } from './delegation/DelegationManager.ts';
 import type { LlmService } from '../services/llm.service.ts';
 import type { PlannerService } from '../planner/planner.service.ts';
 import type { ExecutorService } from '../executor/executor.service.ts';
@@ -19,6 +20,7 @@ export const TOKENS = {
   eventBus: createServiceToken<EventBus>('event-bus'),
   agentRegistry: createServiceToken<AgentRegistry>('agent-registry'),
   messageBus: createServiceToken<MessageBus>('message-bus'),
+  delegationManager: createServiceToken<DelegationManager>('delegation-manager'),
   pluginRegistry: createServiceToken<PluginRegistry>('plugin-registry'),
   pluginLoader: createServiceToken<PluginLoader>('plugin-loader'),
   llmService: createServiceToken<LlmService>('llm-service'),
