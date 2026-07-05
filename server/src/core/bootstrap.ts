@@ -8,6 +8,7 @@ import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
 import { createExecutorService } from '../executor/executor.service.ts';
 import { createAgentRuntimeFactory } from '../agents/agent.runtime.ts';
+import { createAgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import { createKnowledgeStore } from '../knowledge/knowledge-store.ts';
 import type { Container } from './container/Container.ts';
 
@@ -86,6 +87,10 @@ export async function bootstrap(
       container.get(TOKENS.openaiClient),
       container.get(TOKENS.pluginLoader),
     ),
+  );
+
+  services.registerSingleton(TOKENS.agentLifecycle, (container) =>
+    createAgentLifecycleManager(container.get(TOKENS.agentRuntimeFactory)),
   );
 
   services.registerSingleton(TOKENS.knowledgeStore, () =>
