@@ -23,6 +23,24 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
     assert.equal(typeof container.get(TOKENS.embeddingProvider).embed, 'function');
     assert.equal(typeof container.get(TOKENS.embeddingService).embedBatch, 'function');
+    assert.equal(typeof container.get(TOKENS.vectorStore).search, 'function');
+  });
+
+  test('the default vector store is installed as a built-in plugin', async () => {
+    const container = await bootstrap();
+
+    const registry = container.get(TOKENS.pluginRegistry);
+    assert.equal(registry.exists('core.vectorstore'), true);
+
+    const loader = container.get(TOKENS.pluginLoader);
+    const contributions = loader.getVectorStores();
+    assert.equal(contributions.length, 1);
+
+    // The plugin contribution and the DI registration are the same
+    // store — a document added through one is visible through the other.
+    await contributions[0]?.add({ id: 'wired', text: 'hello', vector: [1, 0] });
+    const store = container.get(TOKENS.vectorStore);
+    assert.equal((await store.get('wired'))?.text, 'hello');
   });
 
   test('the default embedding provider is installed as a built-in plugin', async () => {
@@ -112,7 +130,7 @@ describe('framework bootstrap', () => {
     const loader = (await bootstrap()).get(TOKENS.pluginLoader);
 
     const installations = loader.listInstallations();
-    assert.equal(installations.length, 2, 'built-in plugins installed');
+    assert.equal(installations.length, 3, 'built-in plugins installed');
 
     const time = installations.find((entry) => entry.pluginId === 'core.time');
     assert.deepEqual(time?.contributions.tools, ['get_current_time']);
@@ -122,6 +140,11 @@ describe('framework bootstrap', () => {
       (entry) => entry.pluginId === 'core.embeddings',
     );
     assert.equal(embeddings?.contributions.providesEmbeddings, true);
+
+    const vectorStore = installations.find(
+      (entry) => entry.pluginId === 'core.vectorstore',
+    );
+    assert.equal(vectorStore?.contributions.providesVectorStore, true);
   });
 
   test('the OpenAI client is a process-wide singleton', async () => {

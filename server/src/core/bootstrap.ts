@@ -13,6 +13,7 @@ import {
   OpenAIEmbeddingProvider,
   createEmbeddingsPlugin,
 } from './embeddings/index.ts';
+import { InMemoryVectorStore, createVectorStorePlugin } from './vectorstore/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -71,6 +72,17 @@ export async function bootstrap(
         throw new Error('Embeddings are unavailable until bootstrap completes.');
       }
       return builtContainer.get(TOKENS.embeddingProvider);
+    }),
+  );
+
+  // Same lazy-accessor pattern for the shared vector store: the plugin
+  // contribution and TOKENS.vectorStore are the same instance.
+  await pluginLoader.install(
+    createVectorStorePlugin(() => {
+      if (!builtContainer) {
+        throw new Error('The vector store is unavailable until bootstrap completes.');
+      }
+      return builtContainer.get(TOKENS.vectorStore);
     }),
   );
 
@@ -166,6 +178,10 @@ export async function bootstrap(
 
   services.registerSingleton(TOKENS.embeddingService, (container) =>
     new EmbeddingService(container.get(TOKENS.embeddingProvider)),
+  );
+
+  services.registerSingleton(TOKENS.vectorStore, () =>
+    new InMemoryVectorStore(),
   );
 
   // ServiceProvider plugins contribute services last, into the same

@@ -259,6 +259,7 @@ describe('installation diagnostics', () => {
           PluginCapability.ServiceProvider,
           PluginCapability.EventSubscriber,
           PluginCapability.EmbeddingProvider,
+          PluginCapability.VectorStoreProvider,
         ],
       },
       register() {},
@@ -275,6 +276,15 @@ describe('installation diagnostics', () => {
         embed: async () => [0],
         embedBatch: async () => [[0]],
       }),
+      getVectorStore: () => ({
+        add: async () => {},
+        addBatch: async () => {},
+        update: async () => {},
+        delete: async () => {},
+        get: async () => undefined,
+        search: async () => [],
+        clear: async () => {},
+      }),
     };
 
     const before = new Date();
@@ -290,6 +300,7 @@ describe('installation diagnostics', () => {
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,
+      providesVectorStore: true,
       subscribesToEvents: true,
     });
     assert.ok(installation.installedAt >= before, 'install time recorded');

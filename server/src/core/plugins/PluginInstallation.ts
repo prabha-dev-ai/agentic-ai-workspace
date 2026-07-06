@@ -13,6 +13,7 @@ export interface PluginContributionSummary {
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;
+  providesVectorStore: boolean;
   subscribesToEvents: boolean;
 }
 

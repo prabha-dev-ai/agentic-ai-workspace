@@ -23,6 +23,7 @@ export const PluginCapability = {
   WorkflowProvider: 'workflow-provider',
   AgentProvider: 'agent-provider',
   EmbeddingProvider: 'embedding-provider',
+  VectorStoreProvider: 'vector-store-provider',
 } as const;
 
 export type PluginCapability =
@@ -117,6 +118,44 @@ export interface EmbeddingContribution {
 /** Alternative embedding backends (local models, other APIs). */
 export interface EmbeddingProvider {
   getEmbeddingProvider(): EmbeddingContribution;
+}
+
+/** Mirrors core/vectorstore types structurally — see module comment on
+ *  self-contained contribution shapes. */
+export interface VectorStoreDocument {
+  id: string;
+  text: string;
+  vector: number[];
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface VectorStoreSearchOptions {
+  topK?: number;
+  metric?: 'cosine' | 'dot-product' | 'euclidean';
+  filter?: Record<string, string | number | boolean>;
+}
+
+export interface VectorStoreSearchResult {
+  document: VectorStoreDocument;
+  score: number;
+}
+
+export interface VectorStoreContribution {
+  add(document: VectorStoreDocument): Promise<void>;
+  addBatch(documents: VectorStoreDocument[]): Promise<void>;
+  update(document: VectorStoreDocument): Promise<void>;
+  delete(id: string): Promise<void>;
+  get(id: string): Promise<VectorStoreDocument | undefined>;
+  search(
+    vector: number[],
+    options?: VectorStoreSearchOptions,
+  ): Promise<VectorStoreSearchResult[]>;
+  clear(): Promise<void>;
+}
+
+/** Alternative vector store backends (databases, remote indexes). */
+export interface VectorStoreProvider {
+  getVectorStore(): VectorStoreContribution;
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

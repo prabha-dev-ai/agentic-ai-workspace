@@ -13,6 +13,7 @@ import type { AgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import type { AgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 import type { EmbeddingProvider, EmbeddingService } from './embeddings/index.ts';
+import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
 // service type, so container.get(TOKENS.llmService) returns LlmService
@@ -34,4 +35,5 @@ export const TOKENS = {
   knowledgeStore: createServiceToken<KnowledgeStore>('knowledge-store'),
   embeddingProvider: createServiceToken<EmbeddingProvider>('embedding-provider'),
   embeddingService: createServiceToken<EmbeddingService>('embedding-service'),
+  vectorStore: createServiceToken<VectorStore>('vector-store'),
 } as const;

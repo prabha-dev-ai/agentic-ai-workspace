@@ -29,13 +29,15 @@ import type {
   RetrieverProvider,
   ToolContribution,
   ToolProvider,
+  VectorStoreContribution,
+  VectorStoreProvider,
   WorkflowContribution,
   WorkflowProvider,
 } from './PluginCapability.ts';
 
 // Every capability maps to the method that backs it. Declaring a
 // capability without implementing its method fails installation —
-// uniformly, for all eight capabilities.
+// uniformly, for every capability.
 const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.ToolProvider]: 'getTools',
   [PluginCapability.PromptProvider]: 'getPrompts',
@@ -46,6 +48,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.WorkflowProvider]: 'getWorkflows',
   [PluginCapability.AgentProvider]: 'getAgents',
   [PluginCapability.EmbeddingProvider]: 'getEmbeddingProvider',
+  [PluginCapability.VectorStoreProvider]: 'getVectorStore',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -74,6 +77,7 @@ export class PluginLoader {
   private readonly eventSubscribers = new Map<string, EventSubscriber>();
   private readonly serviceProviders = new Map<string, ServiceProviderLike>();
   private readonly embeddingProviders = new Map<string, EmbeddingContribution>();
+  private readonly vectorStores = new Map<string, VectorStoreContribution>();
 
   // Diagnostics: what each installed plugin contributed, and when.
   private readonly installations = new Map<string, PluginInstallation>();
@@ -181,6 +185,10 @@ export class PluginLoader {
     return [...this.embeddingProviders.values()];
   }
 
+  getVectorStores(): VectorStoreContribution[] {
+    return [...this.vectorStores.values()];
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -237,6 +245,7 @@ export class PluginLoader {
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
+      providesVectorStore: false,
       subscribesToEvents: false,
     };
 
@@ -285,6 +294,14 @@ export class PluginLoader {
         (plugin as AgentPlugin & EmbeddingProvider).getEmbeddingProvider(),
       );
       summary.providesEmbeddings = true;
+    }
+
+    if (has(PluginCapability.VectorStoreProvider)) {
+      this.vectorStores.set(
+        id,
+        (plugin as AgentPlugin & VectorStoreProvider).getVectorStore(),
+      );
+      summary.providesVectorStore = true;
     }
 
     if (has(PluginCapability.EventSubscriber)) {
@@ -363,6 +380,7 @@ export class PluginLoader {
     this.eventSubscribers.delete(pluginId);
     this.serviceProviders.delete(pluginId);
     this.embeddingProviders.delete(pluginId);
+    this.vectorStores.delete(pluginId);
     this.installations.delete(pluginId);
 
     const handler = this.busSubscriptions.get(pluginId);
