@@ -25,6 +25,19 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.embeddingService).embedBatch, 'function');
     assert.equal(typeof container.get(TOKENS.vectorStore).search, 'function');
     assert.equal(typeof container.get(TOKENS.hybridRetriever).retrieve, 'function');
+    assert.equal(typeof container.get(TOKENS.rankingStrategy).score, 'function');
+    assert.equal(typeof container.get(TOKENS.knowledgeRanker).rank, 'function');
+  });
+
+  test('the default ranking strategy is installed as a built-in plugin', async () => {
+    const container = await bootstrap();
+
+    const registry = container.get(TOKENS.pluginRegistry);
+    assert.equal(registry.exists('core.knowledge-ranker'), true);
+
+    const loader = container.get(TOKENS.pluginLoader);
+    const names = loader.getRankingStrategies().map((strategy) => strategy.name);
+    assert.deepEqual(names, ['weighted']);
   });
 
   test('hybrid retrieval is installed as a built-in retriever plugin', async () => {
@@ -142,7 +155,7 @@ describe('framework bootstrap', () => {
     const loader = (await bootstrap()).get(TOKENS.pluginLoader);
 
     const installations = loader.listInstallations();
-    assert.equal(installations.length, 4, 'built-in plugins installed');
+    assert.equal(installations.length, 5, 'built-in plugins installed');
 
     const time = installations.find((entry) => entry.pluginId === 'core.time');
     assert.deepEqual(time?.contributions.tools, ['get_current_time']);
@@ -162,6 +175,11 @@ describe('framework bootstrap', () => {
       (entry) => entry.pluginId === 'core.hybrid-retriever',
     );
     assert.deepEqual(hybrid?.contributions.retrievers, ['hybrid']);
+
+    const ranker = installations.find(
+      (entry) => entry.pluginId === 'core.knowledge-ranker',
+    );
+    assert.deepEqual(ranker?.contributions.rankingStrategies, ['weighted']);
   });
 
   test('the OpenAI client is a process-wide singleton', async () => {

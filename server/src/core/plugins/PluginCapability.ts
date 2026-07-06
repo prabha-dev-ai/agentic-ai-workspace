@@ -24,6 +24,7 @@ export const PluginCapability = {
   AgentProvider: 'agent-provider',
   EmbeddingProvider: 'embedding-provider',
   VectorStoreProvider: 'vector-store-provider',
+  RankingStrategyProvider: 'ranking-strategy-provider',
 } as const;
 
 export type PluginCapability =
@@ -156,6 +157,43 @@ export interface VectorStoreContribution {
 /** Alternative vector store backends (databases, remote indexes). */
 export interface VectorStoreProvider {
   getVectorStore(): VectorStoreContribution;
+}
+
+/** Mirrors knowledge/knowledge-ranker.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export interface RankingCandidate {
+  id: string;
+  text: string;
+  title?: string;
+  signals: Record<string, number>;
+}
+
+export interface ScoredRankingCandidate {
+  candidate: RankingCandidate;
+  score: number;
+  explanation: {
+    strategy: string;
+    contributions: {
+      signal: string;
+      value: number;
+      weight: number;
+      contribution: number;
+    }[];
+    summary: string;
+  };
+}
+
+/** A named ranking strategy: scores candidates, the ranker orders them. */
+export interface RankingStrategyContribution {
+  name: string;
+  score(
+    query: string,
+    candidates: RankingCandidate[],
+  ): ScoredRankingCandidate[] | Promise<ScoredRankingCandidate[]>;
+}
+
+export interface RankingStrategyProvider {
+  getRankingStrategies(): RankingStrategyContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

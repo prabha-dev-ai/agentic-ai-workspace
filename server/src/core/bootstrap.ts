@@ -23,6 +23,11 @@ import { createAgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import { createKnowledgeStore } from '../knowledge/knowledge-store.ts';
 import { createHybridRetriever } from '../knowledge/hybrid-retriever.ts';
 import { createHybridRetrieverPlugin } from '../knowledge/hybrid-retriever-plugin.ts';
+import {
+  createKnowledgeRanker,
+  createWeightedRankingStrategy,
+} from '../knowledge/knowledge-ranker.ts';
+import { createKnowledgeRankerPlugin } from '../knowledge/knowledge-ranker-plugin.ts';
 import type { Container } from './container/Container.ts';
 
 // Plugins live next to the running code: src/plugins/ in development,
@@ -97,6 +102,17 @@ export async function bootstrap(
         throw new Error('Hybrid retrieval is unavailable until bootstrap completes.');
       }
       return builtContainer.get(TOKENS.hybridRetriever);
+    }),
+  );
+
+  // And for the default ranking strategy — contributed through the new
+  // ranking-strategy-provider capability under the name 'weighted'.
+  await pluginLoader.install(
+    createKnowledgeRankerPlugin(() => {
+      if (!builtContainer) {
+        throw new Error('Knowledge ranking is unavailable until bootstrap completes.');
+      }
+      return builtContainer.get(TOKENS.rankingStrategy);
     }),
   );
 
@@ -204,6 +220,14 @@ export async function bootstrap(
       embeddingService: container.get(TOKENS.embeddingService),
       vectorStore: container.get(TOKENS.vectorStore),
     }),
+  );
+
+  services.registerSingleton(TOKENS.rankingStrategy, () =>
+    createWeightedRankingStrategy(),
+  );
+
+  services.registerSingleton(TOKENS.knowledgeRanker, (container) =>
+    createKnowledgeRanker(container.get(TOKENS.rankingStrategy)),
   );
 
   // ServiceProvider plugins contribute services last, into the same

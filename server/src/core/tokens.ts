@@ -13,6 +13,7 @@ import type { AgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import type { AgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
 import type { HybridRetriever } from '../knowledge/hybrid-retriever.ts';
+import type { KnowledgeRanker, RankingStrategy } from '../knowledge/knowledge-ranker.ts';
 import type { EmbeddingProvider, EmbeddingService } from './embeddings/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
@@ -38,4 +39,6 @@ export const TOKENS = {
   embeddingService: createServiceToken<EmbeddingService>('embedding-service'),
   vectorStore: createServiceToken<VectorStore>('vector-store'),
   hybridRetriever: createServiceToken<HybridRetriever>('hybrid-retriever'),
+  rankingStrategy: createServiceToken<RankingStrategy>('ranking-strategy'),
+  knowledgeRanker: createServiceToken<KnowledgeRanker>('knowledge-ranker'),
 } as const;

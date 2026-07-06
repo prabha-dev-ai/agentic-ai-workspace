@@ -10,6 +10,7 @@ export interface PluginContributionSummary {
   retrievers: string[];
   workflows: string[];
   agents: string[];
+  rankingStrategies: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

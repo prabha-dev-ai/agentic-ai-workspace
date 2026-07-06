@@ -25,6 +25,8 @@ import type {
   MemoryProvider,
   PromptContribution,
   PromptProvider,
+  RankingStrategyContribution,
+  RankingStrategyProvider,
   RetrieverContribution,
   RetrieverProvider,
   ToolContribution,
@@ -49,6 +51,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.AgentProvider]: 'getAgents',
   [PluginCapability.EmbeddingProvider]: 'getEmbeddingProvider',
   [PluginCapability.VectorStoreProvider]: 'getVectorStore',
+  [PluginCapability.RankingStrategyProvider]: 'getRankingStrategies',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -71,6 +74,7 @@ export class PluginLoader {
   private readonly retrievers = new Map<string, Owned<RetrieverContribution>>();
   private readonly workflows = new Map<string, Owned<WorkflowContribution>>();
   private readonly agents = new Map<string, Owned<AgentContribution>>();
+  private readonly rankingStrategies = new Map<string, Owned<RankingStrategyContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -189,6 +193,10 @@ export class PluginLoader {
     return [...this.vectorStores.values()];
   }
 
+  getRankingStrategies(): RankingStrategyContribution[] {
+    return [...this.rankingStrategies.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -242,6 +250,7 @@ export class PluginLoader {
       retrievers: [],
       workflows: [],
       agents: [],
+      rankingStrategies: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -280,6 +289,12 @@ export class PluginLoader {
     if (has(PluginCapability.AgentProvider)) {
       const contributions = (plugin as AgentPlugin & AgentProvider).getAgents();
       summary.agents = this.harvestNamed(this.agents, 'agent', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.RankingStrategyProvider)) {
+      const contributions = (plugin as AgentPlugin & RankingStrategyProvider).getRankingStrategies();
+      summary.rankingStrategies = this.harvestNamed(this.rankingStrategies, 'ranking strategy', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -366,7 +381,10 @@ export class PluginLoader {
   }
 
   private release(pluginId: string): void {
-    const catalogs = [this.tools, this.prompts, this.retrievers, this.workflows, this.agents];
+    const catalogs = [
+      this.tools, this.prompts, this.retrievers, this.workflows,
+      this.agents, this.rankingStrategies,
+    ];
 
     for (const catalog of catalogs) {
       for (const [name, entry] of catalog) {

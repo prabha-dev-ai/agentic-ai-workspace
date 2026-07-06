@@ -260,6 +260,7 @@ describe('installation diagnostics', () => {
           PluginCapability.EventSubscriber,
           PluginCapability.EmbeddingProvider,
           PluginCapability.VectorStoreProvider,
+          PluginCapability.RankingStrategyProvider,
         ],
       },
       register() {},
@@ -285,6 +286,7 @@ describe('installation diagnostics', () => {
         search: async () => [],
         clear: async () => {},
       }),
+      getRankingStrategies: () => [{ name: 'r_strategy', score: () => [] }],
     };
 
     const before = new Date();
@@ -297,6 +299,7 @@ describe('installation diagnostics', () => {
       retrievers: ['r_retriever'],
       workflows: ['w_workflow'],
       agents: ['a_agent'],
+      rankingStrategies: ['r_strategy'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,
