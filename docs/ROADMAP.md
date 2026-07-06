@@ -5,11 +5,11 @@
 - ✅ AAI-001 Backend Foundation
 ...
 - ✅ AAI-023 Vector Store
+- ✅ AAI-024 Hybrid Retrieval
+- ✅ AAI-025 Knowledge Ranking
 
 ## Remaining
 
-- ⏳ AAI-024 Hybrid Retrieval
-- ⏳ AAI-025 Knowledge Ranking
 - ⏳ AAI-026 Observability
 - ⏳ AAI-027 Tracing
 - ⏳ AAI-028 Metrics
