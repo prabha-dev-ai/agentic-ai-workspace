@@ -1,70 +1,78 @@
 # Agentic AI Workspace
 
-## Project Goal
+## Goal
 
-This project is built to learn Agentic AI by implementing every core concept from scratch.
+Build a production-quality Agentic AI Framework to understand how modern AI frameworks are built internally.
 
-The focus is understanding architecture, not only generating code.
+## Workflow
 
----
+For every story:
+
+1. Implement the story.
+2. Run:
+   - Typecheck (`tsc --noEmit`)
+   - Build
+   - Full test suite
+3. Verify everything passes.
+4. Provide:
+   - Architecture Summary
+   - Design Decisions
+   - Trade-offs
+   - Diagnostics
+   - Test Summary
+5. Stop and wait for commit approval.
+6. One story = one Git commit.
+
+## Engineering Rules
+
+- Extend the existing architecture.
+- Never duplicate existing functionality.
+- Reuse existing services.
+- Maintain backward compatibility.
+- Prefer composition over duplication.
+- Add unit tests for new functionality.
+- Keep public APIs stable.
+- Keep implementations testable.
+
+## Core Architecture
+
+Always build on:
+
+- Dependency Injection
+- Plugin Platform
+- Event Bus
+- Agent Lifecycle
+- Agent Registry
+- Message Bus
+- Delegation
+- Supervisor
+- Embedding Service
+- Vector Store
+
+Do not bypass these components.
+
+## Coding Standards
+
+- Small focused classes.
+- Clear interfaces.
+- Constructor injection.
+- Typed errors.
+- No hidden dependencies.
+- Prefer dependency injection over direct construction.
 
 ## Technology Stack
 
-Frontend
+- Backend: Node.js, Express, TypeScript (strict mode, ES Modules).
+- AI: OpenRouter via the OpenAI SDK.
+- Frontend: Angular.
+- Database: MongoDB (later).
 
-- Angular
-- TypeScript
+## Enforced Invariants
 
-Backend
+These rules are verified by `server/src/core/architecture.test.ts` — violating them fails the build:
 
-- Node.js
-- Express
-- TypeScript
-
-AI
-
-- OpenRouter
-- OpenAI SDK
-
-Database
-
-- MongoDB (Later)
-
----
-
-## Development Rules
-
-- Never change project architecture without explanation.
-- Keep business logic inside services.
-- Controllers should be thin.
-- Prompts must be stored separately.
-- Never hardcode API keys.
-- Use enterprise folder structure.
-- Explain every important architectural decision.
-
----
-
-## Learning Goal
-
-This project is an educational project.
-
-Every generated code should prioritize readability over cleverness.
-
-Always explain why the implementation is chosen.
-
-Do not introduce unnecessary abstractions.
-
-Generate production-quality TypeScript code.
-
-Keep implementations simple and easy to understand.
-
----
-
-## Coding Style
-
-- Use async/await.
-- Use TypeScript strict mode.
-- Use ES Modules.
-- Use named exports where appropriate.
-- Prefer dependency injection when useful.
-- Keep functions small.
+- `new OpenAI(...)` appears only in `core/bootstrap.ts` (the composition root owns the client).
+- `process.env` is read only by `config/env.ts`. Never hardcode API keys.
+- Express stays in the HTTP layer (`app.ts`, `controllers/`, `routes/`).
+- Domain modules never import controllers, routes, or bootstrap.
+- The DI container imports nothing outside `core/container/`.
