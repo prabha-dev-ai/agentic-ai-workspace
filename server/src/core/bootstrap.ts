@@ -14,6 +14,8 @@ import {
   createEmbeddingsPlugin,
 } from './embeddings/index.ts';
 import { InMemoryVectorStore, createVectorStorePlugin } from './vectorstore/index.ts';
+import { ConsoleLogSink, ObservabilityService } from './observability/index.ts';
+import type { LogLevel } from './observability/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -40,6 +42,8 @@ const DEFAULT_PLUGIN_DIRECTORY = fileURLToPath(
 export interface BootstrapOptions {
   /** Override the plugin directory (used by tests and embedders). */
   pluginDirectory?: string;
+  /** Minimum log level (default 'info'; 'debug' surfaces event traffic). */
+  logLevel?: LogLevel;
 }
 
 // The composition root: the ONE place where the framework's object graph
@@ -52,10 +56,26 @@ export async function bootstrap(
   // missed by early subscriber plugins.
   const eventBus = new EventBus();
 
+  // Observability exists BEFORE plugins install: the console sink and
+  // the event bus bridge must already be attached when the first
+  // plugin.installed event fires, or bootstrap itself is unobservable.
+  // That is why the composition root constructs the default sink
+  // directly instead of receiving it from a plugin — plugin-contributed
+  // sinks join after installation, as ADDITIONAL destinations.
+  const observability = new ObservabilityService({
+    minLevel: options.logLevel ?? 'info',
+  });
+  observability.addSink(new ConsoleLogSink());
+  observability.observeEventBus(eventBus);
+
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
   const pluginRegistry = new PluginRegistry();
-  const pluginLoader = new PluginLoader(pluginRegistry, eventBus);
+  const pluginLoader = new PluginLoader(
+    pluginRegistry,
+    eventBus,
+    observability.getLogger('plugins'),
+  );
 
   const plugins = await discoverPlugins(
     options.pluginDirectory ?? DEFAULT_PLUGIN_DIRECTORY,
@@ -115,6 +135,12 @@ export async function bootstrap(
       return builtContainer.get(TOKENS.rankingStrategy);
     }),
   );
+
+  // Plugin-contributed log sinks (log-sink-provider capability) join
+  // the console sink as additional destinations for every entry.
+  for (const sink of pluginLoader.getLogSinks()) {
+    observability.addSink(sink);
+  }
 
   const services = new ServiceCollection();
 
@@ -229,6 +255,8 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.knowledgeRanker, (container) =>
     createKnowledgeRanker(container.get(TOKENS.rankingStrategy)),
   );
+
+  services.registerSingleton(TOKENS.observability, () => observability);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

@@ -261,6 +261,7 @@ describe('installation diagnostics', () => {
           PluginCapability.EmbeddingProvider,
           PluginCapability.VectorStoreProvider,
           PluginCapability.RankingStrategyProvider,
+          PluginCapability.LogSinkProvider,
         ],
       },
       register() {},
@@ -287,6 +288,7 @@ describe('installation diagnostics', () => {
         clear: async () => {},
       }),
       getRankingStrategies: () => [{ name: 'r_strategy', score: () => [] }],
+      getLogSinks: () => [{ name: 'l_sink', write: () => {} }],
     };
 
     const before = new Date();
@@ -300,6 +302,7 @@ describe('installation diagnostics', () => {
       workflows: ['w_workflow'],
       agents: ['a_agent'],
       rankingStrategies: ['r_strategy'],
+      logSinks: ['l_sink'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

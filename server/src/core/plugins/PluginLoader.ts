@@ -16,12 +16,15 @@ import type {
 import type { EventBus } from '../events/EventBus.ts';
 import type { EventHandler } from '../events/EventHandler.ts';
 import type { ServiceCollection } from '../container/ServiceCollection.ts';
+import type { Logger } from '../observability/Logger.ts';
 import type {
   AgentContribution,
   AgentProvider,
   EmbeddingContribution,
   EmbeddingProvider,
   EventSubscriber,
+  LogSinkContribution,
+  LogSinkProvider,
   MemoryProvider,
   PromptContribution,
   PromptProvider,
@@ -52,6 +55,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.EmbeddingProvider]: 'getEmbeddingProvider',
   [PluginCapability.VectorStoreProvider]: 'getVectorStore',
   [PluginCapability.RankingStrategyProvider]: 'getRankingStrategies',
+  [PluginCapability.LogSinkProvider]: 'getLogSinks',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -75,6 +79,7 @@ export class PluginLoader {
   private readonly workflows = new Map<string, Owned<WorkflowContribution>>();
   private readonly agents = new Map<string, Owned<AgentContribution>>();
   private readonly rankingStrategies = new Map<string, Owned<RankingStrategyContribution>>();
+  private readonly logSinks = new Map<string, Owned<LogSinkContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -91,9 +96,16 @@ export class PluginLoader {
 
   private readonly eventBus: EventBus | undefined;
 
-  constructor(registry: PluginRegistry, eventBus?: EventBus) {
+  // Component-aware plugin logging: when a logger is provided, every
+  // plugin's context.log() becomes a structured entry under
+  // '<logger component>.<plugin id>'. Without one, the console fallback
+  // keeps old embedders working unchanged.
+  private readonly logger: Logger | undefined;
+
+  constructor(registry: PluginRegistry, eventBus?: EventBus, logger?: Logger) {
     this.registry = registry;
     this.eventBus = eventBus;
+    this.logger = logger;
   }
 
   async install(plugin: AgentPlugin): Promise<void> {
@@ -102,7 +114,7 @@ export class PluginLoader {
 
     try {
       validateDeclaredCapabilities(plugin);
-      await plugin.register(createContext(plugin));
+      await plugin.register(this.createContext(plugin));
 
       this.installations.set(plugin.metadata.id, {
         pluginId: plugin.metadata.id,
@@ -197,6 +209,10 @@ export class PluginLoader {
     return [...this.rankingStrategies.values()].map((entry) => entry.value);
   }
 
+  getLogSinks(): LogSinkContribution[] {
+    return [...this.logSinks.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -251,6 +267,7 @@ export class PluginLoader {
       workflows: [],
       agents: [],
       rankingStrategies: [],
+      logSinks: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -295,6 +312,12 @@ export class PluginLoader {
     if (has(PluginCapability.RankingStrategyProvider)) {
       const contributions = (plugin as AgentPlugin & RankingStrategyProvider).getRankingStrategies();
       summary.rankingStrategies = this.harvestNamed(this.rankingStrategies, 'ranking strategy', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.LogSinkProvider)) {
+      const contributions = (plugin as AgentPlugin & LogSinkProvider).getLogSinks();
+      summary.logSinks = this.harvestNamed(this.logSinks, 'log sink', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -380,10 +403,25 @@ export class PluginLoader {
     return entries.map((entry) => entry.name);
   }
 
+  // Plugins see only this narrow surface, namespaced by their id.
+  private createContext(plugin: AgentPlugin): PluginContext {
+    const pluginLogger = this.logger?.child(plugin.metadata.id);
+
+    return {
+      log(message: string): void {
+        if (pluginLogger) {
+          pluginLogger.info(message);
+        } else {
+          console.log(`[plugin:${plugin.metadata.id}] ${message}`);
+        }
+      },
+    };
+  }
+
   private release(pluginId: string): void {
     const catalogs = [
       this.tools, this.prompts, this.retrievers, this.workflows,
-      this.agents, this.rankingStrategies,
+      this.agents, this.rankingStrategies, this.logSinks,
     ];
 
     for (const catalog of catalogs) {
@@ -436,13 +474,4 @@ function toolName(pluginId: string, contribution: ToolContribution): string {
 
 function capitalize(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-// Plugins see only this narrow surface, namespaced by their id.
-function createContext(plugin: AgentPlugin): PluginContext {
-  return {
-    log(message: string): void {
-      console.log(`[plugin:${plugin.metadata.id}] ${message}`);
-    },
-  };
 }

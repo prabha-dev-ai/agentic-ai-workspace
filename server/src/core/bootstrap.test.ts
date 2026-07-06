@@ -27,6 +27,23 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.hybridRetriever).retrieve, 'function');
     assert.equal(typeof container.get(TOKENS.rankingStrategy).score, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeRanker).rank, 'function');
+    assert.equal(typeof container.get(TOKENS.observability).getLogger, 'function');
+  });
+
+  test('observability is live from the first plugin install', async () => {
+    const container = await bootstrap();
+    const observability = container.get(TOKENS.observability);
+
+    const diagnostics = observability.getDiagnostics();
+    assert.ok(diagnostics.sinks.includes('console'), 'console sink registered');
+    assert.ok(
+      diagnostics.totalEntries >= 5,
+      'each built-in plugin logged "installed" through its context',
+    );
+    assert.ok(
+      diagnostics.suppressedEntries >= 5,
+      'event traffic is counted (suppressed below the info threshold)',
+    );
   });
 
   test('the default ranking strategy is installed as a built-in plugin', async () => {

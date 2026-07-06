@@ -25,6 +25,7 @@ export const PluginCapability = {
   EmbeddingProvider: 'embedding-provider',
   VectorStoreProvider: 'vector-store-provider',
   RankingStrategyProvider: 'ranking-strategy-provider',
+  LogSinkProvider: 'log-sink-provider',
 } as const;
 
 export type PluginCapability =
@@ -194,6 +195,27 @@ export interface RankingStrategyContribution {
 
 export interface RankingStrategyProvider {
   getRankingStrategies(): RankingStrategyContribution[];
+}
+
+/** Mirrors core/observability/LogEntry.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export interface LogEntryContribution {
+  timestamp: Date;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  component: string;
+  message: string;
+  correlationId?: string;
+  fields?: Record<string, unknown>;
+}
+
+/** A named log destination (file, remote collector, alerting). */
+export interface LogSinkContribution {
+  name: string;
+  write(entry: LogEntryContribution): void;
+}
+
+export interface LogSinkProvider {
+  getLogSinks(): LogSinkContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

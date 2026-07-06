@@ -11,6 +11,7 @@ export interface PluginContributionSummary {
   workflows: string[];
   agents: string[];
   rankingStrategies: string[];
+  logSinks: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;
