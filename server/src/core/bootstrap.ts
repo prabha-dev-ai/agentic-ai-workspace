@@ -21,6 +21,8 @@ import { createExecutorService } from '../executor/executor.service.ts';
 import { createAgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import { createAgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import { createKnowledgeStore } from '../knowledge/knowledge-store.ts';
+import { createHybridRetriever } from '../knowledge/hybrid-retriever.ts';
+import { createHybridRetrieverPlugin } from '../knowledge/hybrid-retriever-plugin.ts';
 import type { Container } from './container/Container.ts';
 
 // Plugins live next to the running code: src/plugins/ in development,
@@ -83,6 +85,18 @@ export async function bootstrap(
         throw new Error('The vector store is unavailable until bootstrap completes.');
       }
       return builtContainer.get(TOKENS.vectorStore);
+    }),
+  );
+
+  // And for hybrid retrieval — contributed through the pre-existing
+  // retriever-provider capability, because a hybrid retriever is just
+  // a retriever.
+  await pluginLoader.install(
+    createHybridRetrieverPlugin(() => {
+      if (!builtContainer) {
+        throw new Error('Hybrid retrieval is unavailable until bootstrap completes.');
+      }
+      return builtContainer.get(TOKENS.hybridRetriever);
     }),
   );
 
@@ -182,6 +196,14 @@ export async function bootstrap(
 
   services.registerSingleton(TOKENS.vectorStore, () =>
     new InMemoryVectorStore(),
+  );
+
+  services.registerSingleton(TOKENS.hybridRetriever, (container) =>
+    createHybridRetriever({
+      knowledgeStore: container.get(TOKENS.knowledgeStore),
+      embeddingService: container.get(TOKENS.embeddingService),
+      vectorStore: container.get(TOKENS.vectorStore),
+    }),
   );
 
   // ServiceProvider plugins contribute services last, into the same
