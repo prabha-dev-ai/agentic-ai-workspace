@@ -19,6 +19,8 @@ import type { ServiceCollection } from '../container/ServiceCollection.ts';
 import type {
   AgentContribution,
   AgentProvider,
+  EmbeddingContribution,
+  EmbeddingProvider,
   EventSubscriber,
   MemoryProvider,
   PromptContribution,
@@ -43,6 +45,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.EventSubscriber]: 'onEvent',
   [PluginCapability.WorkflowProvider]: 'getWorkflows',
   [PluginCapability.AgentProvider]: 'getAgents',
+  [PluginCapability.EmbeddingProvider]: 'getEmbeddingProvider',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -70,6 +73,7 @@ export class PluginLoader {
   private readonly memoryProviders = new Map<string, MemoryProvider>();
   private readonly eventSubscribers = new Map<string, EventSubscriber>();
   private readonly serviceProviders = new Map<string, ServiceProviderLike>();
+  private readonly embeddingProviders = new Map<string, EmbeddingContribution>();
 
   // Diagnostics: what each installed plugin contributed, and when.
   private readonly installations = new Map<string, PluginInstallation>();
@@ -173,6 +177,10 @@ export class PluginLoader {
     return [...this.memoryProviders.values()];
   }
 
+  getEmbeddingProviders(): EmbeddingContribution[] {
+    return [...this.embeddingProviders.values()];
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -228,6 +236,7 @@ export class PluginLoader {
       agents: [],
       providesMemory: false,
       providesServices: false,
+      providesEmbeddings: false,
       subscribesToEvents: false,
     };
 
@@ -268,6 +277,14 @@ export class PluginLoader {
     if (has(PluginCapability.MemoryProvider)) {
       this.memoryProviders.set(id, plugin as AgentPlugin & MemoryProvider);
       summary.providesMemory = true;
+    }
+
+    if (has(PluginCapability.EmbeddingProvider)) {
+      this.embeddingProviders.set(
+        id,
+        (plugin as AgentPlugin & EmbeddingProvider).getEmbeddingProvider(),
+      );
+      summary.providesEmbeddings = true;
     }
 
     if (has(PluginCapability.EventSubscriber)) {
@@ -345,6 +362,7 @@ export class PluginLoader {
     this.memoryProviders.delete(pluginId);
     this.eventSubscribers.delete(pluginId);
     this.serviceProviders.delete(pluginId);
+    this.embeddingProviders.delete(pluginId);
     this.installations.delete(pluginId);
 
     const handler = this.busSubscriptions.get(pluginId);

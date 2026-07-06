@@ -22,6 +22,7 @@ export const PluginCapability = {
   EventSubscriber: 'event-subscriber',
   WorkflowProvider: 'workflow-provider',
   AgentProvider: 'agent-provider',
+  EmbeddingProvider: 'embedding-provider',
 } as const;
 
 export type PluginCapability =
@@ -103,6 +104,19 @@ export interface WorkflowContribution {
 
 export interface WorkflowProvider {
   getWorkflows(): WorkflowContribution[];
+}
+
+/** Mirrors core/embeddings/EmbeddingProvider structurally — see module
+ *  comment on self-contained contribution shapes. */
+export interface EmbeddingContribution {
+  model: { name: string; dimensions?: number };
+  embed(text: string): Promise<number[]>;
+  embedBatch(texts: string[]): Promise<number[][]>;
+}
+
+/** Alternative embedding backends (local models, other APIs). */
+export interface EmbeddingProvider {
+  getEmbeddingProvider(): EmbeddingContribution;
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

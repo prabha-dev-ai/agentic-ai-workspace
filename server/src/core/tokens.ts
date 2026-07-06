@@ -12,6 +12,7 @@ import type { ExecutorService } from '../executor/executor.service.ts';
 import type { AgentRuntimeFactory } from '../agents/agent.runtime.ts';
 import type { AgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import type { KnowledgeStore } from '../knowledge/knowledge-store.ts';
+import type { EmbeddingProvider, EmbeddingService } from './embeddings/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
 // service type, so container.get(TOKENS.llmService) returns LlmService
@@ -31,4 +32,6 @@ export const TOKENS = {
   agentRuntimeFactory: createServiceToken<AgentRuntimeFactory>('agent-runtime-factory'),
   agentLifecycle: createServiceToken<AgentLifecycleManager>('agent-lifecycle-manager'),
   knowledgeStore: createServiceToken<KnowledgeStore>('knowledge-store'),
+  embeddingProvider: createServiceToken<EmbeddingProvider>('embedding-provider'),
+  embeddingService: createServiceToken<EmbeddingService>('embedding-service'),
 } as const;

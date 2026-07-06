@@ -21,6 +21,26 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.supervisorAgent).submitWork, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeStore).add, 'function');
     assert.equal(typeof container.get(TOKENS.pluginLoader).executeTool, 'function');
+    assert.equal(typeof container.get(TOKENS.embeddingProvider).embed, 'function');
+    assert.equal(typeof container.get(TOKENS.embeddingService).embedBatch, 'function');
+  });
+
+  test('the default embedding provider is installed as a built-in plugin', async () => {
+    const container = await bootstrap();
+
+    const registry = container.get(TOKENS.pluginRegistry);
+    assert.equal(registry.exists('core.embeddings'), true);
+
+    const loader = container.get(TOKENS.pluginLoader);
+    const contributions = loader.getEmbeddingProviders();
+    assert.equal(contributions.length, 1);
+
+    // The plugin contribution and the DI registration are the same
+    // provider — one client, one model, two ways to discover it.
+    assert.equal(
+      contributions[0]?.model.name,
+      container.get(TOKENS.embeddingProvider).model.name,
+    );
   });
 
   test('installs built-in plugins and exposes their tools', async () => {
@@ -92,10 +112,16 @@ describe('framework bootstrap', () => {
     const loader = (await bootstrap()).get(TOKENS.pluginLoader);
 
     const installations = loader.listInstallations();
-    assert.equal(installations.length, 1, 'one built-in plugin installed');
-    assert.equal(installations[0]?.pluginId, 'core.time');
-    assert.deepEqual(installations[0]?.contributions.tools, ['get_current_time']);
-    assert.equal(installations[0]?.contributions.providesServices, false);
+    assert.equal(installations.length, 2, 'built-in plugins installed');
+
+    const time = installations.find((entry) => entry.pluginId === 'core.time');
+    assert.deepEqual(time?.contributions.tools, ['get_current_time']);
+    assert.equal(time?.contributions.providesServices, false);
+
+    const embeddings = installations.find(
+      (entry) => entry.pluginId === 'core.embeddings',
+    );
+    assert.equal(embeddings?.contributions.providesEmbeddings, true);
   });
 
   test('the OpenAI client is a process-wide singleton', async () => {

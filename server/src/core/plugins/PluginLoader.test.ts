@@ -258,6 +258,7 @@ describe('installation diagnostics', () => {
           PluginCapability.MemoryProvider,
           PluginCapability.ServiceProvider,
           PluginCapability.EventSubscriber,
+          PluginCapability.EmbeddingProvider,
         ],
       },
       register() {},
@@ -269,6 +270,11 @@ describe('installation diagnostics', () => {
       createMemoryStore: () => ({ append() {}, getHistory: () => [], clear() {} }),
       registerServices() {},
       onEvent() {},
+      getEmbeddingProvider: () => ({
+        model: { name: 'e-model' },
+        embed: async () => [0],
+        embedBatch: async () => [[0]],
+      }),
     };
 
     const before = new Date();
@@ -283,6 +289,7 @@ describe('installation diagnostics', () => {
       agents: ['a_agent'],
       providesMemory: true,
       providesServices: true,
+      providesEmbeddings: true,
       subscribesToEvents: true,
     });
     assert.ok(installation.installedAt >= before, 'install time recorded');

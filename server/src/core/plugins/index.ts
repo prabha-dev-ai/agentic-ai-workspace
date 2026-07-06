@@ -16,6 +16,8 @@ export type {
   MemoryMessage,
   MemoryStore,
   MemoryProvider,
+  EmbeddingContribution,
+  EmbeddingProvider,
   ServiceProvider,
   FrameworkEvent,
   EventSubscriber,

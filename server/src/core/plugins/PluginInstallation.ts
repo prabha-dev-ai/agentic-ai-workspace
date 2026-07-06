@@ -12,6 +12,7 @@ export interface PluginContributionSummary {
   agents: string[];
   providesMemory: boolean;
   providesServices: boolean;
+  providesEmbeddings: boolean;
   subscribesToEvents: boolean;
 }
 

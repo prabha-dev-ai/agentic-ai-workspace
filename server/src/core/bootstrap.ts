@@ -8,6 +8,11 @@ import { MessageBus } from './communication/MessageBus.ts';
 import { DelegationManager } from './delegation/DelegationManager.ts';
 import { SupervisorAgent } from './supervisor/SupervisorAgent.ts';
 import { PluginRegistry, PluginLoader, discoverPlugins } from './plugins/index.ts';
+import {
+  EmbeddingService,
+  OpenAIEmbeddingProvider,
+  createEmbeddingsPlugin,
+} from './embeddings/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -51,6 +56,23 @@ export async function bootstrap(
   for (const plugin of plugins) {
     await pluginLoader.install(plugin);
   }
+
+  // The default embedding provider is a built-in plugin, installed
+  // programmatically rather than discovered: it cannot construct its own
+  // OpenAI client (the composition root owns the only client), and the
+  // container that holds the client does not exist yet at install time.
+  // The plugin gets a lazy accessor instead — safe, because embeddings
+  // are only requested after bootstrap has returned the built container.
+  let builtContainer: Container | undefined;
+
+  await pluginLoader.install(
+    createEmbeddingsPlugin(() => {
+      if (!builtContainer) {
+        throw new Error('Embeddings are unavailable until bootstrap completes.');
+      }
+      return builtContainer.get(TOKENS.embeddingProvider);
+    }),
+  );
 
   const services = new ServiceCollection();
 
@@ -136,10 +158,21 @@ export async function bootstrap(
     createKnowledgeStore(),
   );
 
+  // NOTE: OpenRouter does not serve /embeddings — the default provider
+  // needs an OpenAI-compatible base URL that does (see EmbeddingModel.ts).
+  services.registerSingleton(TOKENS.embeddingProvider, (container) =>
+    new OpenAIEmbeddingProvider(container.get(TOKENS.openaiClient)),
+  );
+
+  services.registerSingleton(TOKENS.embeddingService, (container) =>
+    new EmbeddingService(container.get(TOKENS.embeddingProvider)),
+  );
+
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens
   // (and each other) before the container is frozen by build().
   pluginLoader.registerServices(services);
 
-  return services.build();
+  builtContainer = services.build();
+  return builtContainer;
 }
