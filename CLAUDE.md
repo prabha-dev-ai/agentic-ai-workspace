@@ -48,6 +48,15 @@ Always build on:
 - Supervisor
 - Embedding Service
 - Vector Store
+- Observability (structured logging)
+- Tracing
+- Metrics
+- Caching
+- Security (secrets, redaction, input validation)
+- Streaming
+- Human-in-the-Loop (Interaction Manager)
+- Workflow Engine
+- Checkpoint & Recovery
 
 Do not bypass these components.
 
