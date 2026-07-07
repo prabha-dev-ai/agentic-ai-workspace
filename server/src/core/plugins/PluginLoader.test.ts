@@ -262,6 +262,7 @@ describe('installation diagnostics', () => {
           PluginCapability.VectorStoreProvider,
           PluginCapability.RankingStrategyProvider,
           PluginCapability.LogSinkProvider,
+          PluginCapability.SpanExporterProvider,
         ],
       },
       register() {},
@@ -289,6 +290,7 @@ describe('installation diagnostics', () => {
       }),
       getRankingStrategies: () => [{ name: 'r_strategy', score: () => [] }],
       getLogSinks: () => [{ name: 'l_sink', write: () => {} }],
+      getSpanExporters: () => [{ name: 's_exporter', export: () => {} }],
     };
 
     const before = new Date();
@@ -303,6 +305,7 @@ describe('installation diagnostics', () => {
       agents: ['a_agent'],
       rankingStrategies: ['r_strategy'],
       logSinks: ['l_sink'],
+      spanExporters: ['s_exporter'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

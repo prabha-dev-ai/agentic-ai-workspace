@@ -12,6 +12,7 @@ export interface PluginContributionSummary {
   agents: string[];
   rankingStrategies: string[];
   logSinks: string[];
+  spanExporters: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

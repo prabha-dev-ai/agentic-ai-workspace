@@ -28,6 +28,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.rankingStrategy).score, 'function');
     assert.equal(typeof container.get(TOKENS.knowledgeRanker).rank, 'function');
     assert.equal(typeof container.get(TOKENS.observability).getLogger, 'function');
+    assert.equal(typeof container.get(TOKENS.tracing).getTracer, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -43,6 +44,18 @@ describe('framework bootstrap', () => {
     assert.ok(
       diagnostics.suppressedEntries >= 5,
       'event traffic is counted (suppressed below the info threshold)',
+    );
+  });
+
+  test('tracing is live from the first plugin install', async () => {
+    const container = await bootstrap();
+    const tracing = container.get(TOKENS.tracing);
+
+    const diagnostics = tracing.getDiagnostics();
+    assert.ok(diagnostics.exporters.includes('console'), 'console exporter registered');
+    assert.ok(
+      diagnostics.totalSpans >= 1,
+      'each built-in plugin install is bridged onto the trace stream',
     );
   });
 

@@ -16,6 +16,7 @@ import {
 import { InMemoryVectorStore, createVectorStorePlugin } from './vectorstore/index.ts';
 import { ConsoleLogSink, ObservabilityService } from './observability/index.ts';
 import type { LogLevel } from './observability/index.ts';
+import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -67,6 +68,15 @@ export async function bootstrap(
   });
   observability.addSink(new ConsoleLogSink());
   observability.observeEventBus(eventBus);
+
+  // Tracing exists BEFORE plugins install for the same reason as
+  // observability: the console exporter and the event bus bridge must
+  // already be attached when the first spans/events fire. Plugin-
+  // contributed exporters join after installation, as ADDITIONAL
+  // destinations — never replacing the console exporter.
+  const tracing = new TraceManager();
+  tracing.addExporter(new ConsoleSpanExporter());
+  tracing.observeEventBus(eventBus);
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -140,6 +150,12 @@ export async function bootstrap(
   // the console sink as additional destinations for every entry.
   for (const sink of pluginLoader.getLogSinks()) {
     observability.addSink(sink);
+  }
+
+  // Plugin-contributed span exporters (span-exporter-provider capability)
+  // join the console exporter as additional destinations for every span.
+  for (const exporter of pluginLoader.getSpanExporters()) {
+    tracing.addExporter(exporter);
   }
 
   const services = new ServiceCollection();
@@ -257,6 +273,7 @@ export async function bootstrap(
   );
 
   services.registerSingleton(TOKENS.observability, () => observability);
+  services.registerSingleton(TOKENS.tracing, () => tracing);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

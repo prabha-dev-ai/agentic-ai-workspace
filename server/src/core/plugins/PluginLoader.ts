@@ -32,6 +32,8 @@ import type {
   RankingStrategyProvider,
   RetrieverContribution,
   RetrieverProvider,
+  SpanExporterContribution,
+  SpanExporterProvider,
   ToolContribution,
   ToolProvider,
   VectorStoreContribution,
@@ -56,6 +58,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.VectorStoreProvider]: 'getVectorStore',
   [PluginCapability.RankingStrategyProvider]: 'getRankingStrategies',
   [PluginCapability.LogSinkProvider]: 'getLogSinks',
+  [PluginCapability.SpanExporterProvider]: 'getSpanExporters',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -80,6 +83,7 @@ export class PluginLoader {
   private readonly agents = new Map<string, Owned<AgentContribution>>();
   private readonly rankingStrategies = new Map<string, Owned<RankingStrategyContribution>>();
   private readonly logSinks = new Map<string, Owned<LogSinkContribution>>();
+  private readonly spanExporters = new Map<string, Owned<SpanExporterContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -213,6 +217,10 @@ export class PluginLoader {
     return [...this.logSinks.values()].map((entry) => entry.value);
   }
 
+  getSpanExporters(): SpanExporterContribution[] {
+    return [...this.spanExporters.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -268,6 +276,7 @@ export class PluginLoader {
       agents: [],
       rankingStrategies: [],
       logSinks: [],
+      spanExporters: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -318,6 +327,12 @@ export class PluginLoader {
     if (has(PluginCapability.LogSinkProvider)) {
       const contributions = (plugin as AgentPlugin & LogSinkProvider).getLogSinks();
       summary.logSinks = this.harvestNamed(this.logSinks, 'log sink', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.SpanExporterProvider)) {
+      const contributions = (plugin as AgentPlugin & SpanExporterProvider).getSpanExporters();
+      summary.spanExporters = this.harvestNamed(this.spanExporters, 'span exporter', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -421,7 +436,7 @@ export class PluginLoader {
   private release(pluginId: string): void {
     const catalogs = [
       this.tools, this.prompts, this.retrievers, this.workflows,
-      this.agents, this.rankingStrategies, this.logSinks,
+      this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
     ];
 
     for (const catalog of catalogs) {

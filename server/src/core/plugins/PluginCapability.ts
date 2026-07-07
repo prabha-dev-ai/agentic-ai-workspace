@@ -26,6 +26,7 @@ export const PluginCapability = {
   VectorStoreProvider: 'vector-store-provider',
   RankingStrategyProvider: 'ranking-strategy-provider',
   LogSinkProvider: 'log-sink-provider',
+  SpanExporterProvider: 'span-exporter-provider',
 } as const;
 
 export type PluginCapability =
@@ -216,6 +217,32 @@ export interface LogSinkContribution {
 
 export interface LogSinkProvider {
   getLogSinks(): LogSinkContribution[];
+}
+
+/** Mirrors core/tracing/Span.ts structurally — see module comment on
+ *  self-contained contribution shapes. */
+export interface SpanDataContribution {
+  traceId: string;
+  spanId: string;
+  parentSpanId: string | undefined;
+  name: string;
+  component: string;
+  startTime: Date;
+  endTime: Date;
+  durationMs: number;
+  status: 'unset' | 'ok' | 'error';
+  attributes: Record<string, string | number | boolean>;
+  error: string | undefined;
+}
+
+/** A named span destination (collector, file, tracing backend). */
+export interface SpanExporterContribution {
+  name: string;
+  export(span: SpanDataContribution): void;
+}
+
+export interface SpanExporterProvider {
+  getSpanExporters(): SpanExporterContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

@@ -16,6 +16,7 @@ import type { HybridRetriever } from '../knowledge/hybrid-retriever.ts';
 import type { KnowledgeRanker, RankingStrategy } from '../knowledge/knowledge-ranker.ts';
 import type { EmbeddingProvider, EmbeddingService } from './embeddings/index.ts';
 import type { ObservabilityService } from './observability/index.ts';
+import type { TraceManager } from './tracing/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -43,4 +44,5 @@ export const TOKENS = {
   rankingStrategy: createServiceToken<RankingStrategy>('ranking-strategy'),
   knowledgeRanker: createServiceToken<KnowledgeRanker>('knowledge-ranker'),
   observability: createServiceToken<ObservabilityService>('observability'),
+  tracing: createServiceToken<TraceManager>('tracing'),
 } as const;
