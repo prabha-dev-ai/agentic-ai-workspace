@@ -17,6 +17,7 @@ import type { KnowledgeRanker, RankingStrategy } from '../knowledge/knowledge-ra
 import type { EmbeddingProvider, EmbeddingService } from './embeddings/index.ts';
 import type { ObservabilityService } from './observability/index.ts';
 import type { TraceManager } from './tracing/index.ts';
+import type { MetricsRegistry } from './metrics/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -45,4 +46,5 @@ export const TOKENS = {
   knowledgeRanker: createServiceToken<KnowledgeRanker>('knowledge-ranker'),
   observability: createServiceToken<ObservabilityService>('observability'),
   tracing: createServiceToken<TraceManager>('tracing'),
+  metrics: createServiceToken<MetricsRegistry>('metrics'),
 } as const;

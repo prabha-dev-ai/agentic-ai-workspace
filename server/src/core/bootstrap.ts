@@ -17,6 +17,7 @@ import { InMemoryVectorStore, createVectorStorePlugin } from './vectorstore/inde
 import { ConsoleLogSink, ObservabilityService } from './observability/index.ts';
 import type { LogLevel } from './observability/index.ts';
 import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
+import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -77,6 +78,13 @@ export async function bootstrap(
   const tracing = new TraceManager();
   tracing.addExporter(new ConsoleSpanExporter());
   tracing.observeEventBus(eventBus);
+
+  // Metrics exists BEFORE plugins install for the same reason. Unlike the
+  // log/trace sinks, nothing dispatches to the console exporter until a
+  // caller explicitly scrapes (metrics.export()) — the registry has no
+  // "entry happened" moment to hook, only continuously-mutated state.
+  const metrics = new MetricsRegistry();
+  metrics.addExporter(new ConsoleMetricExporter());
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -156,6 +164,12 @@ export async function bootstrap(
   // join the console exporter as additional destinations for every span.
   for (const exporter of pluginLoader.getSpanExporters()) {
     tracing.addExporter(exporter);
+  }
+
+  // Plugin-contributed metric exporters (metric-exporter-provider
+  // capability) join the console exporter as additional scrape targets.
+  for (const exporter of pluginLoader.getMetricExporters()) {
+    metrics.addExporter(exporter);
   }
 
   const services = new ServiceCollection();
@@ -274,6 +288,7 @@ export async function bootstrap(
 
   services.registerSingleton(TOKENS.observability, () => observability);
   services.registerSingleton(TOKENS.tracing, () => tracing);
+  services.registerSingleton(TOKENS.metrics, () => metrics);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

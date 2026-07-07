@@ -29,6 +29,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.knowledgeRanker).rank, 'function');
     assert.equal(typeof container.get(TOKENS.observability).getLogger, 'function');
     assert.equal(typeof container.get(TOKENS.tracing).getTracer, 'function');
+    assert.equal(typeof container.get(TOKENS.metrics).counter, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -57,6 +58,19 @@ describe('framework bootstrap', () => {
       diagnostics.totalSpans >= 1,
       'each built-in plugin install is bridged onto the trace stream',
     );
+  });
+
+  test('metrics is live from the first plugin install', async () => {
+    const container = await bootstrap();
+    const metrics = container.get(TOKENS.metrics);
+
+    const diagnostics = metrics.getDiagnostics();
+    assert.ok(diagnostics.exporters.includes('console'), 'console exporter registered');
+
+    metrics.counter('probe_total').inc();
+    const snapshot = metrics.export();
+    assert.ok(snapshot.some((metric) => metric.name === 'probe_total'));
+    assert.equal(metrics.getDiagnostics().exportCount, 1);
   });
 
   test('the default ranking strategy is installed as a built-in plugin', async () => {

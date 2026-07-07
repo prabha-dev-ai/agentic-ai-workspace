@@ -13,6 +13,7 @@ export interface PluginContributionSummary {
   rankingStrategies: string[];
   logSinks: string[];
   spanExporters: string[];
+  metricExporters: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

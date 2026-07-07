@@ -263,6 +263,7 @@ describe('installation diagnostics', () => {
           PluginCapability.RankingStrategyProvider,
           PluginCapability.LogSinkProvider,
           PluginCapability.SpanExporterProvider,
+          PluginCapability.MetricExporterProvider,
         ],
       },
       register() {},
@@ -291,6 +292,7 @@ describe('installation diagnostics', () => {
       getRankingStrategies: () => [{ name: 'r_strategy', score: () => [] }],
       getLogSinks: () => [{ name: 'l_sink', write: () => {} }],
       getSpanExporters: () => [{ name: 's_exporter', export: () => {} }],
+      getMetricExporters: () => [{ name: 'm_exporter', export: () => {} }],
     };
 
     const before = new Date();
@@ -306,6 +308,7 @@ describe('installation diagnostics', () => {
       rankingStrategies: ['r_strategy'],
       logSinks: ['l_sink'],
       spanExporters: ['s_exporter'],
+      metricExporters: ['m_exporter'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

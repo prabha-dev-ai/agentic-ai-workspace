@@ -27,6 +27,7 @@ export const PluginCapability = {
   RankingStrategyProvider: 'ranking-strategy-provider',
   LogSinkProvider: 'log-sink-provider',
   SpanExporterProvider: 'span-exporter-provider',
+  MetricExporterProvider: 'metric-exporter-provider',
 } as const;
 
 export type PluginCapability =
@@ -243,6 +244,40 @@ export interface SpanExporterContribution {
 
 export interface SpanExporterProvider {
   getSpanExporters(): SpanExporterContribution[];
+}
+
+/** Mirrors core/metrics/MetricSnapshot.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export interface MetricSampleContribution {
+  labels: Record<string, string>;
+  value: number;
+}
+
+export interface HistogramBucketContribution {
+  le: number;
+  count: number;
+}
+
+export interface HistogramSampleContribution {
+  labels: Record<string, string>;
+  count: number;
+  sum: number;
+  buckets: HistogramBucketContribution[];
+}
+
+export type MetricSnapshotContribution =
+  | { type: 'counter'; name: string; help: string | undefined; samples: MetricSampleContribution[] }
+  | { type: 'gauge'; name: string; help: string | undefined; samples: MetricSampleContribution[] }
+  | { type: 'histogram'; name: string; help: string | undefined; samples: HistogramSampleContribution[] };
+
+/** A named metrics destination (scrape endpoint, collector, dashboard backend). */
+export interface MetricExporterContribution {
+  name: string;
+  export(snapshot: MetricSnapshotContribution[]): void;
+}
+
+export interface MetricExporterProvider {
+  getMetricExporters(): MetricExporterContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */
