@@ -21,6 +21,7 @@ import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
 import { CacheRegistry } from './caching/index.ts';
 import { ApiKeyProvider, SecurityService } from './security/index.ts';
 import { StreamManager } from './streaming/index.ts';
+import { InteractionManager } from './interaction/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -111,6 +112,13 @@ export async function bootstrap(
   // onto it, correlated by stream id, the same way plugin installs do.
   const streaming = new StreamManager();
   streaming.connectEventBus(eventBus);
+
+  // Human-in-the-loop exists BEFORE plugins install for the same
+  // consistency reason, and connects to the shared event bus immediately:
+  // interaction requested/resolved/cancelled/timed-out events publish
+  // onto it, correlated by interaction id.
+  const interactions = new InteractionManager();
+  interactions.connectEventBus(eventBus);
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -215,6 +223,12 @@ export async function bootstrap(
   // capability) join as additional global watchers of every stream's events.
   for (const observer of pluginLoader.getStreamObservers()) {
     streaming.addObserver(observer);
+  }
+
+  // Plugin-contributed interaction observers (interaction-observer-provider
+  // capability) join as additional global watchers of every interaction.
+  for (const observer of pluginLoader.getInteractionObservers()) {
+    interactions.addObserver(observer);
   }
 
   const services = new ServiceCollection();
@@ -337,6 +351,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.caching, () => caching);
   services.registerSingleton(TOKENS.security, () => security);
   services.registerSingleton(TOKENS.streaming, () => streaming);
+  services.registerSingleton(TOKENS.interactions, () => interactions);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

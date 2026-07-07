@@ -36,6 +36,8 @@ import type {
   SecretProvider,
   StreamObserverContribution,
   StreamObserverProvider,
+  InteractionObserverContribution,
+  InteractionObserverProvider,
   MetricExporterContribution,
   MetricExporterProvider,
   RetrieverContribution,
@@ -71,6 +73,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.CacheProvider]: 'getCaches',
   [PluginCapability.SecretProvider]: 'getSecretSources',
   [PluginCapability.StreamObserverProvider]: 'getStreamObservers',
+  [PluginCapability.InteractionObserverProvider]: 'getInteractionObservers',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -100,6 +103,7 @@ export class PluginLoader {
   private readonly caches = new Map<string, Owned<CacheContribution>>();
   private readonly secretSources = new Map<string, Owned<SecretSourceContribution>>();
   private readonly streamObservers = new Map<string, Owned<StreamObserverContribution>>();
+  private readonly interactionObservers = new Map<string, Owned<InteractionObserverContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -253,6 +257,10 @@ export class PluginLoader {
     return [...this.streamObservers.values()].map((entry) => entry.value);
   }
 
+  getInteractionObservers(): InteractionObserverContribution[] {
+    return [...this.interactionObservers.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -313,6 +321,7 @@ export class PluginLoader {
       caches: [],
       secretSources: [],
       streamObservers: [],
+      interactionObservers: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -393,6 +402,12 @@ export class PluginLoader {
     if (has(PluginCapability.StreamObserverProvider)) {
       const contributions = (plugin as AgentPlugin & StreamObserverProvider).getStreamObservers();
       summary.streamObservers = this.harvestNamed(this.streamObservers, 'stream observer', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.InteractionObserverProvider)) {
+      const contributions = (plugin as AgentPlugin & InteractionObserverProvider).getInteractionObservers();
+      summary.interactionObservers = this.harvestNamed(this.interactionObservers, 'interaction observer', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -498,6 +513,7 @@ export class PluginLoader {
       this.tools, this.prompts, this.retrievers, this.workflows,
       this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
       this.metricExporters, this.caches, this.secretSources, this.streamObservers,
+      this.interactionObservers,
     ];
 
     for (const catalog of catalogs) {

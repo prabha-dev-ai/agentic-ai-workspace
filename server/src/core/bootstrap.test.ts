@@ -33,6 +33,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.caching).getOrCreate, 'function');
     assert.equal(typeof container.get(TOKENS.security).getSecret, 'function');
     assert.equal(typeof container.get(TOKENS.streaming).createStream, 'function');
+    assert.equal(typeof container.get(TOKENS.interactions).requestApproval, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -114,6 +115,24 @@ describe('framework bootstrap', () => {
     assert.ok(
       bus.getDiagnostics().publishedEvents > publishedBefore,
       'stream lifecycle milestones were published',
+    );
+  });
+
+  test('human-in-the-loop is live from bootstrap and bridges onto the event bus', async () => {
+    const container = await bootstrap();
+    const interactions = container.get(TOKENS.interactions);
+    const bus = container.get(TOKENS.eventBus);
+
+    const publishedBefore = bus.getDiagnostics().publishedEvents;
+
+    const interaction = interactions.requestApproval('Proceed with the risky action?');
+    interaction.respond({ type: 'approval', approved: true });
+
+    assert.equal(interaction.status, 'resolved');
+    assert.equal(interactions.getDiagnostics().totalInteractions, 1);
+    assert.ok(
+      bus.getDiagnostics().publishedEvents > publishedBefore,
+      'interaction lifecycle events were published',
     );
   });
 

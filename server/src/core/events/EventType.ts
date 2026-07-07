@@ -27,6 +27,10 @@ export const EventType = {
   StreamCompleted: 'stream.completed',
   StreamFailed: 'stream.failed',
   StreamCancelled: 'stream.cancelled',
+  InteractionRequested: 'interaction.requested',
+  InteractionResolved: 'interaction.resolved',
+  InteractionCancelled: 'interaction.cancelled',
+  InteractionTimedOut: 'interaction.timedout',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];

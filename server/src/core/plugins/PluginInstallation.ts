@@ -17,6 +17,7 @@ export interface PluginContributionSummary {
   caches: string[];
   secretSources: string[];
   streamObservers: string[];
+  interactionObservers: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

@@ -87,8 +87,9 @@ export class LifecycleManager {
 
 // From/to-aware mapping: the same target state means different things
 // depending on where it was entered from — returning to Executing after
-// a tool wait is a tool completion, not a fresh execution start. A
-// failure during a tool wait is both a tool failure AND an agent failure.
+// a tool wait is a tool completion, not a fresh execution start, and
+// returning after a human interaction is neither. A failure during a
+// tool wait is both a tool failure AND an agent failure.
 function mapTransitionToEvents(from: AgentState, to: AgentState): EventType[] {
   switch (to) {
     case AgentState.Ready:
@@ -96,11 +97,13 @@ function mapTransitionToEvents(from: AgentState, to: AgentState): EventType[] {
     case AgentState.Planning:
       return [EventType.PlanningStarted];
     case AgentState.Executing:
-      return from === AgentState.WaitingForTool
-        ? [EventType.ToolExecutionCompleted]
-        : [EventType.ExecutionStarted];
+      if (from === AgentState.WaitingForTool) return [EventType.ToolExecutionCompleted];
+      if (from === AgentState.WaitingForUser) return [EventType.InteractionResolved];
+      return [EventType.ExecutionStarted];
     case AgentState.WaitingForTool:
       return [EventType.ToolExecutionStarted];
+    case AgentState.WaitingForUser:
+      return [EventType.InteractionRequested];
     case AgentState.Completed:
       return [EventType.AgentCompleted];
     case AgentState.Failed:

@@ -21,6 +21,7 @@ import type { MetricsRegistry } from './metrics/index.ts';
 import type { CacheRegistry } from './caching/index.ts';
 import type { SecurityService } from './security/index.ts';
 import type { StreamManager } from './streaming/index.ts';
+import type { InteractionManager } from './interaction/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -53,4 +54,5 @@ export const TOKENS = {
   caching: createServiceToken<CacheRegistry>('caching'),
   security: createServiceToken<SecurityService>('security'),
   streaming: createServiceToken<StreamManager>('streaming'),
+  interactions: createServiceToken<InteractionManager>('interactions'),
 } as const;

@@ -267,6 +267,7 @@ describe('installation diagnostics', () => {
           PluginCapability.CacheProvider,
           PluginCapability.SecretProvider,
           PluginCapability.StreamObserverProvider,
+          PluginCapability.InteractionObserverProvider,
         ],
       },
       register() {},
@@ -308,6 +309,7 @@ describe('installation diagnostics', () => {
       }],
       getSecretSources: () => [{ name: 's_secret', getSecret: () => undefined }],
       getStreamObservers: () => [{ name: 'st_observer', onEvent: () => {} }],
+      getInteractionObservers: () => [{ name: 'i_observer', onEvent: () => {} }],
     };
 
     const before = new Date();
@@ -327,6 +329,7 @@ describe('installation diagnostics', () => {
       caches: ['c_cache'],
       secretSources: ['s_secret'],
       streamObservers: ['st_observer'],
+      interactionObservers: ['i_observer'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

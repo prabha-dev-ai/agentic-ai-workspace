@@ -31,6 +31,7 @@ export const PluginCapability = {
   CacheProvider: 'cache-provider',
   SecretProvider: 'secret-provider',
   StreamObserverProvider: 'stream-observer-provider',
+  InteractionObserverProvider: 'interaction-observer-provider',
 } as const;
 
 export type PluginCapability =
@@ -341,6 +342,39 @@ export interface StreamObserverContribution {
 
 export interface StreamObserverProvider {
   getStreamObservers(): StreamObserverContribution[];
+}
+
+/** Mirrors core/interaction/InteractionEvent.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export type InteractionEventContribution =
+  | {
+      type: 'requested';
+      interactionId: string;
+      agentId: string | undefined;
+      interactionType: 'approval' | 'input';
+      prompt: string;
+      timestamp: Date;
+    }
+  | {
+      type: 'resolved';
+      interactionId: string;
+      response:
+        | { type: 'approval'; approved: boolean; comment?: string }
+        | { type: 'input'; value: string };
+      timestamp: Date;
+    }
+  | { type: 'cancelled'; interactionId: string; timestamp: Date }
+  | { type: 'timedout'; interactionId: string; timestamp: Date };
+
+/** A named global observer that watches every human-in-the-loop interaction
+ *  (an audit log, a chat transport relaying prompts to a human). */
+export interface InteractionObserverContribution {
+  name: string;
+  onEvent(event: InteractionEventContribution): void;
+}
+
+export interface InteractionObserverProvider {
+  getInteractionObservers(): InteractionObserverContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */
