@@ -23,6 +23,7 @@ import type { SecurityService } from './security/index.ts';
 import type { StreamManager } from './streaming/index.ts';
 import type { InteractionManager } from './interaction/index.ts';
 import type { WorkflowRuntime } from './workflow/index.ts';
+import type { CheckpointManager } from './checkpoint/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -57,4 +58,5 @@ export const TOKENS = {
   streaming: createServiceToken<StreamManager>('streaming'),
   interactions: createServiceToken<InteractionManager>('interactions'),
   workflows: createServiceToken<WorkflowRuntime>('workflows'),
+  checkpoints: createServiceToken<CheckpointManager>('checkpoints'),
 } as const;

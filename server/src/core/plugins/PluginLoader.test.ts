@@ -269,6 +269,7 @@ describe('installation diagnostics', () => {
           PluginCapability.StreamObserverProvider,
           PluginCapability.InteractionObserverProvider,
           PluginCapability.WorkflowDefinitionProvider,
+          PluginCapability.CheckpointStoreProvider,
         ],
       },
       register() {},
@@ -314,6 +315,17 @@ describe('installation diagnostics', () => {
       getWorkflowDefinitions: () => [
         { id: 'w_definition', name: 'x', description: 'x', steps: [{ id: 'a', name: 'a', execute: () => 1 }] },
       ],
+      getCheckpointStore: () => ({
+        name: 'ck_store',
+        size: 0,
+        save: (subjectId: string, data: unknown) => ({
+          id: 'ck_1', subjectId, data, createdAt: new Date(), metadata: undefined,
+        }),
+        getLatest: () => undefined,
+        list: () => [],
+        clear: () => {},
+        getStats: () => ({ saves: 0, recoveries: 0, misses: 0, size: 0 }),
+      }),
     };
 
     const before = new Date();
@@ -339,6 +351,7 @@ describe('installation diagnostics', () => {
       providesServices: true,
       providesEmbeddings: true,
       providesVectorStore: true,
+      providesCheckpointStore: true,
       subscribesToEvents: true,
     });
     assert.ok(installation.installedAt >= before, 'install time recorded');

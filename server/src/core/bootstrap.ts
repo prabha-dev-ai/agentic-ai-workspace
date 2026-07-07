@@ -23,6 +23,7 @@ import { ApiKeyProvider, SecurityService } from './security/index.ts';
 import { StreamManager } from './streaming/index.ts';
 import { InteractionManager } from './interaction/index.ts';
 import { WorkflowRuntime } from './workflow/index.ts';
+import { CheckpointManager } from './checkpoint/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -126,6 +127,14 @@ export async function bootstrap(
   // every run/step milestone publishes onto it, correlated by run id.
   const workflows = new WorkflowRuntime();
   workflows.connectEventBus(eventBus);
+
+  // Checkpoint & recovery exists BEFORE plugins install for the same
+  // consistency reason, and connects to the shared event bus immediately.
+  // Defaults to an in-memory store; a plugin-contributed durable store
+  // (checkpoint-store-provider capability) replaces it after installs —
+  // the same single-swappable-backend idiom as the vector store.
+  const checkpoints = new CheckpointManager();
+  checkpoints.connectEventBus(eventBus);
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -242,6 +251,14 @@ export async function bootstrap(
   // capability) become runnable through the workflow engine.
   for (const definition of pluginLoader.getWorkflowDefinitions()) {
     workflows.defineWorkflow(definition);
+  }
+
+  // A plugin-contributed checkpoint store (checkpoint-store-provider
+  // capability) replaces the default in-memory one — same single-backend
+  // swap as the vector store/embedding provider; first contribution wins.
+  const [contributedCheckpointStore] = pluginLoader.getCheckpointStores();
+  if (contributedCheckpointStore) {
+    checkpoints.useStore(contributedCheckpointStore);
   }
 
   const services = new ServiceCollection();
@@ -366,6 +383,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.streaming, () => streaming);
   services.registerSingleton(TOKENS.interactions, () => interactions);
   services.registerSingleton(TOKENS.workflows, () => workflows);
+  services.registerSingleton(TOKENS.checkpoints, () => checkpoints);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

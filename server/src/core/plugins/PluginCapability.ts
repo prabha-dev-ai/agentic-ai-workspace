@@ -33,6 +33,7 @@ export const PluginCapability = {
   StreamObserverProvider: 'stream-observer-provider',
   InteractionObserverProvider: 'interaction-observer-provider',
   WorkflowDefinitionProvider: 'workflow-definition-provider',
+  CheckpointStoreProvider: 'checkpoint-store-provider',
 } as const;
 
 export type PluginCapability =
@@ -408,6 +409,34 @@ export interface WorkflowDefinitionContribution {
 
 export interface WorkflowDefinitionProvider {
   getWorkflowDefinitions(): WorkflowDefinitionContribution[];
+}
+
+/** Mirrors core/checkpoint/Checkpoint.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export interface CheckpointContribution {
+  id: string;
+  subjectId: string;
+  data: unknown;
+  createdAt: Date;
+  metadata: Record<string, unknown> | undefined;
+}
+
+export interface CheckpointStoreContribution {
+  name: string;
+  size: number;
+  save(subjectId: string, data: unknown, metadata?: Record<string, unknown>): CheckpointContribution;
+  getLatest(subjectId: string): CheckpointContribution | undefined;
+  list(subjectId: string): CheckpointContribution[];
+  clear(subjectId: string): void;
+  getStats(): { saves: number; recoveries: number; misses: number; size: number };
+}
+
+/** Alternative checkpoint backends (a database, object storage) — the
+ *  same single-swappable-backend shape as VectorStoreProvider/
+ *  EmbeddingProvider above, not a named catalog: a process wants one
+ *  active checkpoint destination. */
+export interface CheckpointStoreProvider {
+  getCheckpointStore(): CheckpointStoreContribution;
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

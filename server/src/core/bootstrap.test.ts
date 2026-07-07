@@ -35,6 +35,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.streaming).createStream, 'function');
     assert.equal(typeof container.get(TOKENS.interactions).requestApproval, 'function');
     assert.equal(typeof container.get(TOKENS.workflows).defineWorkflow, 'function');
+    assert.equal(typeof container.get(TOKENS.checkpoints).checkpoint, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -157,6 +158,24 @@ describe('framework bootstrap', () => {
     assert.ok(
       bus.getDiagnostics().publishedEvents > publishedBefore,
       'workflow lifecycle events were published',
+    );
+  });
+
+  test('checkpoint & recovery is live from bootstrap and bridges onto the event bus', async () => {
+    const container = await bootstrap();
+    const checkpoints = container.get(TOKENS.checkpoints);
+    const bus = container.get(TOKENS.eventBus);
+
+    const publishedBefore = bus.getDiagnostics().publishedEvents;
+
+    checkpoints.checkpoint('probe-agent', { step: 1 });
+    const result = checkpoints.recover('probe-agent');
+
+    assert.equal(result.recovered, true);
+    assert.equal(checkpoints.getDiagnostics().saves, 1);
+    assert.ok(
+      bus.getDiagnostics().publishedEvents > publishedBefore,
+      'checkpoint lifecycle events were published',
     );
   });
 

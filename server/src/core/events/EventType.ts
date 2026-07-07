@@ -37,6 +37,9 @@ export const EventType = {
   WorkflowStepFailed: 'workflow.step.failed',
   WorkflowCompleted: 'workflow.completed',
   WorkflowFailed: 'workflow.failed',
+  CheckpointSaved: 'checkpoint.saved',
+  CheckpointRecovered: 'checkpoint.recovered',
+  CheckpointRecoveryFailed: 'checkpoint.recovery-failed',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];

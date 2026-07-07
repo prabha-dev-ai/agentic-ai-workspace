@@ -40,6 +40,8 @@ import type {
   InteractionObserverProvider,
   WorkflowDefinitionContribution,
   WorkflowDefinitionProvider,
+  CheckpointStoreContribution,
+  CheckpointStoreProvider,
   MetricExporterContribution,
   MetricExporterProvider,
   RetrieverContribution,
@@ -77,6 +79,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.StreamObserverProvider]: 'getStreamObservers',
   [PluginCapability.InteractionObserverProvider]: 'getInteractionObservers',
   [PluginCapability.WorkflowDefinitionProvider]: 'getWorkflowDefinitions',
+  [PluginCapability.CheckpointStoreProvider]: 'getCheckpointStore',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -115,6 +118,7 @@ export class PluginLoader {
   private readonly serviceProviders = new Map<string, ServiceProviderLike>();
   private readonly embeddingProviders = new Map<string, EmbeddingContribution>();
   private readonly vectorStores = new Map<string, VectorStoreContribution>();
+  private readonly checkpointStores = new Map<string, CheckpointStoreContribution>();
 
   // Diagnostics: what each installed plugin contributed, and when.
   private readonly installations = new Map<string, PluginInstallation>();
@@ -233,6 +237,10 @@ export class PluginLoader {
     return [...this.vectorStores.values()];
   }
 
+  getCheckpointStores(): CheckpointStoreContribution[] {
+    return [...this.checkpointStores.values()];
+  }
+
   getRankingStrategies(): RankingStrategyContribution[] {
     return [...this.rankingStrategies.values()].map((entry) => entry.value);
   }
@@ -335,6 +343,7 @@ export class PluginLoader {
       providesServices: false,
       providesEmbeddings: false,
       providesVectorStore: false,
+      providesCheckpointStore: false,
       subscribesToEvents: false,
     };
 
@@ -447,6 +456,14 @@ export class PluginLoader {
       summary.providesVectorStore = true;
     }
 
+    if (has(PluginCapability.CheckpointStoreProvider)) {
+      this.checkpointStores.set(
+        id,
+        (plugin as AgentPlugin & CheckpointStoreProvider).getCheckpointStore(),
+      );
+      summary.providesCheckpointStore = true;
+    }
+
     if (has(PluginCapability.EventSubscriber)) {
       const subscriber = plugin as AgentPlugin & EventSubscriber;
       this.eventSubscribers.set(id, subscriber);
@@ -544,6 +561,7 @@ export class PluginLoader {
     this.serviceProviders.delete(pluginId);
     this.embeddingProviders.delete(pluginId);
     this.vectorStores.delete(pluginId);
+    this.checkpointStores.delete(pluginId);
     this.installations.delete(pluginId);
 
     const handler = this.busSubscriptions.get(pluginId);
