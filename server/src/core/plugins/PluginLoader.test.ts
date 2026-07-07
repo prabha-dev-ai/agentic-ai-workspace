@@ -264,6 +264,7 @@ describe('installation diagnostics', () => {
           PluginCapability.LogSinkProvider,
           PluginCapability.SpanExporterProvider,
           PluginCapability.MetricExporterProvider,
+          PluginCapability.CacheProvider,
         ],
       },
       register() {},
@@ -293,6 +294,16 @@ describe('installation diagnostics', () => {
       getLogSinks: () => [{ name: 'l_sink', write: () => {} }],
       getSpanExporters: () => [{ name: 's_exporter', export: () => {} }],
       getMetricExporters: () => [{ name: 'm_exporter', export: () => {} }],
+      getCaches: () => [{
+        name: 'c_cache',
+        size: 0,
+        get: () => undefined,
+        set: () => {},
+        has: () => false,
+        delete: () => false,
+        clear: () => {},
+        getStats: () => ({ hits: 0, misses: 0, sets: 0, deletes: 0, evictions: 0, expirations: 0, size: 0 }),
+      }],
     };
 
     const before = new Date();
@@ -309,6 +320,7 @@ describe('installation diagnostics', () => {
       logSinks: ['l_sink'],
       spanExporters: ['s_exporter'],
       metricExporters: ['m_exporter'],
+      caches: ['c_cache'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

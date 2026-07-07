@@ -14,6 +14,7 @@ export interface PluginContributionSummary {
   logSinks: string[];
   spanExporters: string[];
   metricExporters: string[];
+  caches: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

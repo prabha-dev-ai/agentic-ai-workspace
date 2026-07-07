@@ -28,6 +28,7 @@ export const PluginCapability = {
   LogSinkProvider: 'log-sink-provider',
   SpanExporterProvider: 'span-exporter-provider',
   MetricExporterProvider: 'metric-exporter-provider',
+  CacheProvider: 'cache-provider',
 } as const;
 
 export type PluginCapability =
@@ -278,6 +279,34 @@ export interface MetricExporterContribution {
 
 export interface MetricExporterProvider {
   getMetricExporters(): MetricExporterContribution[];
+}
+
+/** Mirrors core/caching/Cache.ts structurally — see module comment on
+ *  self-contained contribution shapes. */
+export interface CacheStatsContribution {
+  hits: number;
+  misses: number;
+  sets: number;
+  deletes: number;
+  evictions: number;
+  expirations: number;
+  size: number;
+}
+
+/** A named cache backend (in-memory, Redis, a distributed cache). */
+export interface CacheContribution {
+  name: string;
+  size: number;
+  get(key: string): unknown;
+  set(key: string, value: unknown, options?: { ttlMs?: number }): void;
+  has(key: string): boolean;
+  delete(key: string): boolean;
+  clear(): void;
+  getStats(): CacheStatsContribution;
+}
+
+export interface CacheProvider {
+  getCaches(): CacheContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

@@ -18,6 +18,7 @@ import { ConsoleLogSink, ObservabilityService } from './observability/index.ts';
 import type { LogLevel } from './observability/index.ts';
 import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
+import { CacheRegistry } from './caching/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -85,6 +86,12 @@ export async function bootstrap(
   // "entry happened" moment to hook, only continuously-mutated state.
   const metrics = new MetricsRegistry();
   metrics.addExporter(new ConsoleMetricExporter());
+
+  // Caching exists BEFORE plugins install for the same consistency reason
+  // as the other observability primitives, even though nothing currently
+  // needs a cache during installation — plugin-contributed caches
+  // (cache-provider capability) register into it right after installs.
+  const caching = new CacheRegistry();
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -170,6 +177,13 @@ export async function bootstrap(
   // capability) join the console exporter as additional scrape targets.
   for (const exporter of pluginLoader.getMetricExporters()) {
     metrics.addExporter(exporter);
+  }
+
+  // Plugin-contributed caches (cache-provider capability) register under
+  // their own names, alongside any caches created on demand via
+  // caching.getOrCreate().
+  for (const cache of pluginLoader.getCaches()) {
+    caching.register(cache);
   }
 
   const services = new ServiceCollection();
@@ -289,6 +303,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.observability, () => observability);
   services.registerSingleton(TOKENS.tracing, () => tracing);
   services.registerSingleton(TOKENS.metrics, () => metrics);
+  services.registerSingleton(TOKENS.caching, () => caching);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

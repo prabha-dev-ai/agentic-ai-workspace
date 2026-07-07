@@ -30,6 +30,8 @@ import type {
   PromptProvider,
   RankingStrategyContribution,
   RankingStrategyProvider,
+  CacheContribution,
+  CacheProvider,
   MetricExporterContribution,
   MetricExporterProvider,
   RetrieverContribution,
@@ -62,6 +64,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.LogSinkProvider]: 'getLogSinks',
   [PluginCapability.SpanExporterProvider]: 'getSpanExporters',
   [PluginCapability.MetricExporterProvider]: 'getMetricExporters',
+  [PluginCapability.CacheProvider]: 'getCaches',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -88,6 +91,7 @@ export class PluginLoader {
   private readonly logSinks = new Map<string, Owned<LogSinkContribution>>();
   private readonly spanExporters = new Map<string, Owned<SpanExporterContribution>>();
   private readonly metricExporters = new Map<string, Owned<MetricExporterContribution>>();
+  private readonly caches = new Map<string, Owned<CacheContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -229,6 +233,10 @@ export class PluginLoader {
     return [...this.metricExporters.values()].map((entry) => entry.value);
   }
 
+  getCaches(): CacheContribution[] {
+    return [...this.caches.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -286,6 +294,7 @@ export class PluginLoader {
       logSinks: [],
       spanExporters: [],
       metricExporters: [],
+      caches: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -348,6 +357,12 @@ export class PluginLoader {
     if (has(PluginCapability.MetricExporterProvider)) {
       const contributions = (plugin as AgentPlugin & MetricExporterProvider).getMetricExporters();
       summary.metricExporters = this.harvestNamed(this.metricExporters, 'metric exporter', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.CacheProvider)) {
+      const contributions = (plugin as AgentPlugin & CacheProvider).getCaches();
+      summary.caches = this.harvestNamed(this.caches, 'cache', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -452,7 +467,7 @@ export class PluginLoader {
     const catalogs = [
       this.tools, this.prompts, this.retrievers, this.workflows,
       this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
-      this.metricExporters,
+      this.metricExporters, this.caches,
     ];
 
     for (const catalog of catalogs) {
