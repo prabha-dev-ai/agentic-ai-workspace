@@ -30,6 +30,7 @@ export const PluginCapability = {
   MetricExporterProvider: 'metric-exporter-provider',
   CacheProvider: 'cache-provider',
   SecretProvider: 'secret-provider',
+  StreamObserverProvider: 'stream-observer-provider',
 } as const;
 
 export type PluginCapability =
@@ -322,6 +323,24 @@ export interface SecretSourceContribution {
 
 export interface SecretProvider {
   getSecretSources(): SecretSourceContribution[];
+}
+
+/** Mirrors core/streaming/StreamEvent.ts structurally — see module
+ *  comment on self-contained contribution shapes. */
+export type StreamEventContribution =
+  | { type: 'chunk'; streamId: string; streamName: string; sequence: number; data: unknown; timestamp: Date }
+  | { type: 'completed'; streamId: string; streamName: string; chunkCount: number; durationMs: number; timestamp: Date }
+  | { type: 'error'; streamId: string; streamName: string; error: string; chunkCount: number; durationMs: number; timestamp: Date }
+  | { type: 'cancelled'; streamId: string; streamName: string; chunkCount: number; durationMs: number; timestamp: Date };
+
+/** A named global observer that watches every stream's events (a collector, a transport). */
+export interface StreamObserverContribution {
+  name: string;
+  onEvent(event: StreamEventContribution): void;
+}
+
+export interface StreamObserverProvider {
+  getStreamObservers(): StreamObserverContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

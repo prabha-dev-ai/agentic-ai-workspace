@@ -16,6 +16,7 @@ export interface PluginContributionSummary {
   metricExporters: string[];
   caches: string[];
   secretSources: string[];
+  streamObservers: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

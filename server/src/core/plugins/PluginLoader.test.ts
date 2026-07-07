@@ -266,6 +266,7 @@ describe('installation diagnostics', () => {
           PluginCapability.MetricExporterProvider,
           PluginCapability.CacheProvider,
           PluginCapability.SecretProvider,
+          PluginCapability.StreamObserverProvider,
         ],
       },
       register() {},
@@ -306,6 +307,7 @@ describe('installation diagnostics', () => {
         getStats: () => ({ hits: 0, misses: 0, sets: 0, deletes: 0, evictions: 0, expirations: 0, size: 0 }),
       }],
       getSecretSources: () => [{ name: 's_secret', getSecret: () => undefined }],
+      getStreamObservers: () => [{ name: 'st_observer', onEvent: () => {} }],
     };
 
     const before = new Date();
@@ -324,6 +326,7 @@ describe('installation diagnostics', () => {
       metricExporters: ['m_exporter'],
       caches: ['c_cache'],
       secretSources: ['s_secret'],
+      streamObservers: ['st_observer'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

@@ -20,6 +20,7 @@ import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
 import { CacheRegistry } from './caching/index.ts';
 import { ApiKeyProvider, SecurityService } from './security/index.ts';
+import { StreamManager } from './streaming/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -103,6 +104,13 @@ export async function bootstrap(
   const security = new SecurityService();
   security.addSecretSource(new ApiKeyProvider({ llm: env.llm.apiKey }));
   security.getSecret('llm');
+
+  // Streaming exists BEFORE plugins install for the same consistency
+  // reason, and connects to the shared event bus immediately: stream
+  // lifecycle milestones (started/completed/failed/cancelled) publish
+  // onto it, correlated by stream id, the same way plugin installs do.
+  const streaming = new StreamManager();
+  streaming.connectEventBus(eventBus);
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -201,6 +209,12 @@ export async function bootstrap(
   // the API key provider as additional lookup sources for getSecret().
   for (const source of pluginLoader.getSecretSources()) {
     security.addSecretSource(source);
+  }
+
+  // Plugin-contributed stream observers (stream-observer-provider
+  // capability) join as additional global watchers of every stream's events.
+  for (const observer of pluginLoader.getStreamObservers()) {
+    streaming.addObserver(observer);
   }
 
   const services = new ServiceCollection();
@@ -322,6 +336,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.metrics, () => metrics);
   services.registerSingleton(TOKENS.caching, () => caching);
   services.registerSingleton(TOKENS.security, () => security);
+  services.registerSingleton(TOKENS.streaming, () => streaming);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

@@ -32,6 +32,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.metrics).counter, 'function');
     assert.equal(typeof container.get(TOKENS.caching).getOrCreate, 'function');
     assert.equal(typeof container.get(TOKENS.security).getSecret, 'function');
+    assert.equal(typeof container.get(TOKENS.streaming).createStream, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -95,6 +96,25 @@ describe('framework bootstrap', () => {
 
     security.validateInput('a normal prompt');
     assert.equal(security.getDiagnostics().validationsPassed, 1);
+  });
+
+  test('streaming is live from bootstrap and bridges lifecycle milestones onto the event bus', async () => {
+    const container = await bootstrap();
+    const streaming = container.get(TOKENS.streaming);
+    const bus = container.get(TOKENS.eventBus);
+
+    const publishedBefore = bus.getDiagnostics().publishedEvents;
+
+    const stream = streaming.createStream<string>('probe');
+    stream.push('chunk');
+    stream.complete();
+
+    assert.equal(stream.chunkCount, 1);
+    assert.equal(streaming.getDiagnostics().totalStreams, 1);
+    assert.ok(
+      bus.getDiagnostics().publishedEvents > publishedBefore,
+      'stream lifecycle milestones were published',
+    );
   });
 
   test('the default ranking strategy is installed as a built-in plugin', async () => {

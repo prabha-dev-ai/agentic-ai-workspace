@@ -34,6 +34,8 @@ import type {
   CacheProvider,
   SecretSourceContribution,
   SecretProvider,
+  StreamObserverContribution,
+  StreamObserverProvider,
   MetricExporterContribution,
   MetricExporterProvider,
   RetrieverContribution,
@@ -68,6 +70,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.MetricExporterProvider]: 'getMetricExporters',
   [PluginCapability.CacheProvider]: 'getCaches',
   [PluginCapability.SecretProvider]: 'getSecretSources',
+  [PluginCapability.StreamObserverProvider]: 'getStreamObservers',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -96,6 +99,7 @@ export class PluginLoader {
   private readonly metricExporters = new Map<string, Owned<MetricExporterContribution>>();
   private readonly caches = new Map<string, Owned<CacheContribution>>();
   private readonly secretSources = new Map<string, Owned<SecretSourceContribution>>();
+  private readonly streamObservers = new Map<string, Owned<StreamObserverContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -245,6 +249,10 @@ export class PluginLoader {
     return [...this.secretSources.values()].map((entry) => entry.value);
   }
 
+  getStreamObservers(): StreamObserverContribution[] {
+    return [...this.streamObservers.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -304,6 +312,7 @@ export class PluginLoader {
       metricExporters: [],
       caches: [],
       secretSources: [],
+      streamObservers: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -378,6 +387,12 @@ export class PluginLoader {
     if (has(PluginCapability.SecretProvider)) {
       const contributions = (plugin as AgentPlugin & SecretProvider).getSecretSources();
       summary.secretSources = this.harvestNamed(this.secretSources, 'secret source', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.StreamObserverProvider)) {
+      const contributions = (plugin as AgentPlugin & StreamObserverProvider).getStreamObservers();
+      summary.streamObservers = this.harvestNamed(this.streamObservers, 'stream observer', id,
         contributions.map((value) => ({ name: value.name, value })));
     }
 
@@ -482,7 +497,7 @@ export class PluginLoader {
     const catalogs = [
       this.tools, this.prompts, this.retrievers, this.workflows,
       this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
-      this.metricExporters, this.caches, this.secretSources,
+      this.metricExporters, this.caches, this.secretSources, this.streamObservers,
     ];
 
     for (const catalog of catalogs) {

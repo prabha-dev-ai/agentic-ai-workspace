@@ -23,6 +23,10 @@ export const EventType = {
   TaskCompleted: 'task.completed',
   TaskFailed: 'task.failed',
   TaskCancelled: 'task.cancelled',
+  StreamStarted: 'stream.started',
+  StreamCompleted: 'stream.completed',
+  StreamFailed: 'stream.failed',
+  StreamCancelled: 'stream.cancelled',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
