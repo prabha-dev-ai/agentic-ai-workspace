@@ -29,6 +29,7 @@ export const PluginCapability = {
   SpanExporterProvider: 'span-exporter-provider',
   MetricExporterProvider: 'metric-exporter-provider',
   CacheProvider: 'cache-provider',
+  SecretProvider: 'secret-provider',
 } as const;
 
 export type PluginCapability =
@@ -307,6 +308,20 @@ export interface CacheContribution {
 
 export interface CacheProvider {
   getCaches(): CacheContribution[];
+}
+
+/** Mirrors core/security/SecretSource.ts structurally — see module
+ *  comment on self-contained contribution shapes. Returns a raw string,
+ *  never the framework's Secret class: plugins should only ever need to
+ *  import the plugin API (see PluginContext.ts), and Secret's private
+ *  state can't cross that boundary anyway. */
+export interface SecretSourceContribution {
+  name: string;
+  getSecret(name: string): string | undefined;
+}
+
+export interface SecretProvider {
+  getSecretSources(): SecretSourceContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

@@ -265,6 +265,7 @@ describe('installation diagnostics', () => {
           PluginCapability.SpanExporterProvider,
           PluginCapability.MetricExporterProvider,
           PluginCapability.CacheProvider,
+          PluginCapability.SecretProvider,
         ],
       },
       register() {},
@@ -304,6 +305,7 @@ describe('installation diagnostics', () => {
         clear: () => {},
         getStats: () => ({ hits: 0, misses: 0, sets: 0, deletes: 0, evictions: 0, expirations: 0, size: 0 }),
       }],
+      getSecretSources: () => [{ name: 's_secret', getSecret: () => undefined }],
     };
 
     const before = new Date();
@@ -321,6 +323,7 @@ describe('installation diagnostics', () => {
       spanExporters: ['s_exporter'],
       metricExporters: ['m_exporter'],
       caches: ['c_cache'],
+      secretSources: ['s_secret'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

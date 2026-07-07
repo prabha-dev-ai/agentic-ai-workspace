@@ -19,6 +19,7 @@ import type { LogLevel } from './observability/index.ts';
 import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
 import { CacheRegistry } from './caching/index.ts';
+import { ApiKeyProvider, SecurityService } from './security/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -92,6 +93,16 @@ export async function bootstrap(
   // needs a cache during installation — plugin-contributed caches
   // (cache-provider capability) register into it right after installs.
   const caching = new CacheRegistry();
+
+  // Security exists BEFORE plugins install for the same consistency
+  // reason. The API key source is wired straight from the already-loaded
+  // `env` object (config/env.ts owns environment access — see
+  // architecture.test.ts's ownership rule), and fetched once immediately
+  // so the key is redaction-protected from this point on even if nothing
+  // else ever calls getSecret('llm') directly.
+  const security = new SecurityService();
+  security.addSecretSource(new ApiKeyProvider({ llm: env.llm.apiKey }));
+  security.getSecret('llm');
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -184,6 +195,12 @@ export async function bootstrap(
   // caching.getOrCreate().
   for (const cache of pluginLoader.getCaches()) {
     caching.register(cache);
+  }
+
+  // Plugin-contributed secret sources (secret-provider capability) join
+  // the API key provider as additional lookup sources for getSecret().
+  for (const source of pluginLoader.getSecretSources()) {
+    security.addSecretSource(source);
   }
 
   const services = new ServiceCollection();
@@ -304,6 +321,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.tracing, () => tracing);
   services.registerSingleton(TOKENS.metrics, () => metrics);
   services.registerSingleton(TOKENS.caching, () => caching);
+  services.registerSingleton(TOKENS.security, () => security);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

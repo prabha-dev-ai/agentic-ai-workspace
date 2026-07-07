@@ -19,6 +19,7 @@ import type { ObservabilityService } from './observability/index.ts';
 import type { TraceManager } from './tracing/index.ts';
 import type { MetricsRegistry } from './metrics/index.ts';
 import type { CacheRegistry } from './caching/index.ts';
+import type { SecurityService } from './security/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
@@ -49,4 +50,5 @@ export const TOKENS = {
   tracing: createServiceToken<TraceManager>('tracing'),
   metrics: createServiceToken<MetricsRegistry>('metrics'),
   caching: createServiceToken<CacheRegistry>('caching'),
+  security: createServiceToken<SecurityService>('security'),
 } as const;

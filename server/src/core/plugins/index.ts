@@ -42,6 +42,8 @@ export type {
   CacheStatsContribution,
   CacheContribution,
   CacheProvider,
+  SecretSourceContribution,
+  SecretProvider,
   ServiceProvider,
   FrameworkEvent,
   EventSubscriber,

@@ -31,6 +31,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.tracing).getTracer, 'function');
     assert.equal(typeof container.get(TOKENS.metrics).counter, 'function');
     assert.equal(typeof container.get(TOKENS.caching).getOrCreate, 'function');
+    assert.equal(typeof container.get(TOKENS.security).getSecret, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -83,6 +84,17 @@ describe('framework bootstrap', () => {
 
     assert.equal(cache.get('k'), 'v');
     assert.equal(caching.getDiagnostics().totalEntries, 1);
+  });
+
+  test('security is live from bootstrap', async () => {
+    const container = await bootstrap();
+    const security = container.get(TOKENS.security);
+
+    const diagnostics = security.getDiagnostics();
+    assert.ok(diagnostics.secretSources.includes('api-keys'), 'API key provider registered');
+
+    security.validateInput('a normal prompt');
+    assert.equal(security.getDiagnostics().validationsPassed, 1);
   });
 
   test('the default ranking strategy is installed as a built-in plugin', async () => {
