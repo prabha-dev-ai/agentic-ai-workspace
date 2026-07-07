@@ -18,6 +18,7 @@ export interface PluginContributionSummary {
   secretSources: string[];
   streamObservers: string[];
   interactionObservers: string[];
+  workflowDefinitions: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;

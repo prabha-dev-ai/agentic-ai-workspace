@@ -32,6 +32,7 @@ export const PluginCapability = {
   SecretProvider: 'secret-provider',
   StreamObserverProvider: 'stream-observer-provider',
   InteractionObserverProvider: 'interaction-observer-provider',
+  WorkflowDefinitionProvider: 'workflow-definition-provider',
 } as const;
 
 export type PluginCapability =
@@ -375,6 +376,38 @@ export interface InteractionObserverContribution {
 
 export interface InteractionObserverProvider {
   getInteractionObservers(): InteractionObserverContribution[];
+}
+
+/**
+ * Mirrors core/workflow/WorkflowDefinition.ts structurally — see module
+ * comment on self-contained contribution shapes. Deliberately separate
+ * from the pre-existing WorkflowProvider/WorkflowContribution above:
+ * that capability is a purely descriptive catalog (numeric step ids, no
+ * execution behavior) already shipped and consumed elsewhere, so it stays
+ * untouched for backward compatibility. This capability is how plugins
+ * contribute genuinely EXECUTABLE workflows to core/workflow's engine.
+ */
+export interface WorkflowStepContextContribution {
+  input: Record<string, unknown>;
+  results: Record<string, unknown>;
+}
+
+export interface WorkflowStepDefinitionContribution {
+  id: string;
+  name: string;
+  execute(context: WorkflowStepContextContribution): Promise<unknown> | unknown;
+  next?(context: WorkflowStepContextContribution, output: unknown): string | undefined;
+}
+
+export interface WorkflowDefinitionContribution {
+  id: string;
+  name: string;
+  description: string;
+  steps: WorkflowStepDefinitionContribution[];
+}
+
+export interface WorkflowDefinitionProvider {
+  getWorkflowDefinitions(): WorkflowDefinitionContribution[];
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

@@ -22,6 +22,7 @@ import { CacheRegistry } from './caching/index.ts';
 import { ApiKeyProvider, SecurityService } from './security/index.ts';
 import { StreamManager } from './streaming/index.ts';
 import { InteractionManager } from './interaction/index.ts';
+import { WorkflowRuntime } from './workflow/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -119,6 +120,12 @@ export async function bootstrap(
   // onto it, correlated by interaction id.
   const interactions = new InteractionManager();
   interactions.connectEventBus(eventBus);
+
+  // The workflow engine exists BEFORE plugins install for the same
+  // consistency reason, and connects to the shared event bus immediately:
+  // every run/step milestone publishes onto it, correlated by run id.
+  const workflows = new WorkflowRuntime();
+  workflows.connectEventBus(eventBus);
 
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
@@ -229,6 +236,12 @@ export async function bootstrap(
   // capability) join as additional global watchers of every interaction.
   for (const observer of pluginLoader.getInteractionObservers()) {
     interactions.addObserver(observer);
+  }
+
+  // Plugin-contributed workflow definitions (workflow-definition-provider
+  // capability) become runnable through the workflow engine.
+  for (const definition of pluginLoader.getWorkflowDefinitions()) {
+    workflows.defineWorkflow(definition);
   }
 
   const services = new ServiceCollection();
@@ -352,6 +365,7 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.security, () => security);
   services.registerSingleton(TOKENS.streaming, () => streaming);
   services.registerSingleton(TOKENS.interactions, () => interactions);
+  services.registerSingleton(TOKENS.workflows, () => workflows);
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

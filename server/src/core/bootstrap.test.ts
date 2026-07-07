@@ -34,6 +34,7 @@ describe('framework bootstrap', () => {
     assert.equal(typeof container.get(TOKENS.security).getSecret, 'function');
     assert.equal(typeof container.get(TOKENS.streaming).createStream, 'function');
     assert.equal(typeof container.get(TOKENS.interactions).requestApproval, 'function');
+    assert.equal(typeof container.get(TOKENS.workflows).defineWorkflow, 'function');
   });
 
   test('observability is live from the first plugin install', async () => {
@@ -133,6 +134,29 @@ describe('framework bootstrap', () => {
     assert.ok(
       bus.getDiagnostics().publishedEvents > publishedBefore,
       'interaction lifecycle events were published',
+    );
+  });
+
+  test('the workflow engine is live from bootstrap and bridges onto the event bus', async () => {
+    const container = await bootstrap();
+    const workflows = container.get(TOKENS.workflows);
+    const bus = container.get(TOKENS.eventBus);
+
+    workflows.defineWorkflow({
+      id: 'probe',
+      name: 'Probe',
+      description: 'test',
+      steps: [{ id: 'a', name: 'a', execute: () => 'done' }],
+    });
+
+    const publishedBefore = bus.getDiagnostics().publishedEvents;
+    const run = await workflows.run('probe');
+
+    assert.equal(run.status, 'completed');
+    assert.equal(workflows.getDiagnostics().totalRuns, 1);
+    assert.ok(
+      bus.getDiagnostics().publishedEvents > publishedBefore,
+      'workflow lifecycle events were published',
     );
   });
 

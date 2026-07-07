@@ -38,6 +38,8 @@ import type {
   StreamObserverProvider,
   InteractionObserverContribution,
   InteractionObserverProvider,
+  WorkflowDefinitionContribution,
+  WorkflowDefinitionProvider,
   MetricExporterContribution,
   MetricExporterProvider,
   RetrieverContribution,
@@ -74,6 +76,7 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.SecretProvider]: 'getSecretSources',
   [PluginCapability.StreamObserverProvider]: 'getStreamObservers',
   [PluginCapability.InteractionObserverProvider]: 'getInteractionObservers',
+  [PluginCapability.WorkflowDefinitionProvider]: 'getWorkflowDefinitions',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -104,6 +107,7 @@ export class PluginLoader {
   private readonly secretSources = new Map<string, Owned<SecretSourceContribution>>();
   private readonly streamObservers = new Map<string, Owned<StreamObserverContribution>>();
   private readonly interactionObservers = new Map<string, Owned<InteractionObserverContribution>>();
+  private readonly workflowDefinitions = new Map<string, Owned<WorkflowDefinitionContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -261,6 +265,10 @@ export class PluginLoader {
     return [...this.interactionObservers.values()].map((entry) => entry.value);
   }
 
+  getWorkflowDefinitions(): WorkflowDefinitionContribution[] {
+    return [...this.workflowDefinitions.values()].map((entry) => entry.value);
+  }
+
   /** Diagnostics: what a specific installed plugin contributed. */
   getInstallation(pluginId: string): PluginInstallation {
     const installation = this.installations.get(pluginId);
@@ -322,6 +330,7 @@ export class PluginLoader {
       secretSources: [],
       streamObservers: [],
       interactionObservers: [],
+      workflowDefinitions: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
@@ -409,6 +418,12 @@ export class PluginLoader {
       const contributions = (plugin as AgentPlugin & InteractionObserverProvider).getInteractionObservers();
       summary.interactionObservers = this.harvestNamed(this.interactionObservers, 'interaction observer', id,
         contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.WorkflowDefinitionProvider)) {
+      const contributions = (plugin as AgentPlugin & WorkflowDefinitionProvider).getWorkflowDefinitions();
+      summary.workflowDefinitions = this.harvestNamed(this.workflowDefinitions, 'workflow definition', id,
+        contributions.map((value) => ({ name: value.id, value })));
     }
 
     if (has(PluginCapability.MemoryProvider)) {
@@ -513,7 +528,7 @@ export class PluginLoader {
       this.tools, this.prompts, this.retrievers, this.workflows,
       this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
       this.metricExporters, this.caches, this.secretSources, this.streamObservers,
-      this.interactionObservers,
+      this.interactionObservers, this.workflowDefinitions,
     ];
 
     for (const catalog of catalogs) {

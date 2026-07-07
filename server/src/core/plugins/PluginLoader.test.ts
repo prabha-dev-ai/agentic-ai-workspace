@@ -268,6 +268,7 @@ describe('installation diagnostics', () => {
           PluginCapability.SecretProvider,
           PluginCapability.StreamObserverProvider,
           PluginCapability.InteractionObserverProvider,
+          PluginCapability.WorkflowDefinitionProvider,
         ],
       },
       register() {},
@@ -310,6 +311,9 @@ describe('installation diagnostics', () => {
       getSecretSources: () => [{ name: 's_secret', getSecret: () => undefined }],
       getStreamObservers: () => [{ name: 'st_observer', onEvent: () => {} }],
       getInteractionObservers: () => [{ name: 'i_observer', onEvent: () => {} }],
+      getWorkflowDefinitions: () => [
+        { id: 'w_definition', name: 'x', description: 'x', steps: [{ id: 'a', name: 'a', execute: () => 1 }] },
+      ],
     };
 
     const before = new Date();
@@ -330,6 +334,7 @@ describe('installation diagnostics', () => {
       secretSources: ['s_secret'],
       streamObservers: ['st_observer'],
       interactionObservers: ['i_observer'],
+      workflowDefinitions: ['w_definition'],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,

@@ -31,6 +31,12 @@ export const EventType = {
   InteractionResolved: 'interaction.resolved',
   InteractionCancelled: 'interaction.cancelled',
   InteractionTimedOut: 'interaction.timedout',
+  WorkflowStarted: 'workflow.started',
+  WorkflowStepStarted: 'workflow.step.started',
+  WorkflowStepCompleted: 'workflow.step.completed',
+  WorkflowStepFailed: 'workflow.step.failed',
+  WorkflowCompleted: 'workflow.completed',
+  WorkflowFailed: 'workflow.failed',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];
