@@ -117,6 +117,34 @@ describe('ownership rules', () => {
       'all other files must use "import type" for redis, or depend on RedisClient instead',
     );
   });
+
+  // AAI-037: the WebSocket transport is inbound server infrastructure, the
+  // same category as Express itself — not an outbound network client like
+  // OpenAI/Postgres/Redis — so it is wired up in the HTTP layer (the
+  // gateway module), not core/bootstrap.ts. Same single-construction-site
+  // discipline regardless: exactly one place stands up the upgrade
+  // handler for the whole process.
+  test('the WebSocket server is constructed only in the chat gateway', () => {
+    const constructors = nonTestSources.filter((file) =>
+      file.content.includes('new WebSocketServer('),
+    );
+    assert.deepEqual(
+      constructors.map((file) => file.path),
+      ['websocket/ChatWebSocketGateway.ts'],
+      'new WebSocketServer(...) must appear exactly once, in websocket/ChatWebSocketGateway.ts',
+    );
+  });
+
+  test('only the chat gateway imports ws as a value', () => {
+    const valueImports = nonTestSources.filter((file) =>
+      /^import (?!type ).*from 'ws'/m.test(file.content),
+    );
+    assert.deepEqual(
+      valueImports.map((file) => file.path),
+      ['websocket/ChatWebSocketGateway.ts'],
+      'all other files must use "import type" for ws',
+    );
+  });
 });
 
 describe('layering rules', () => {
@@ -139,8 +167,12 @@ describe('layering rules', () => {
     }
   });
 
+  // AAI-037: middleware/ joins app.ts/controllers/routes/ as HTTP-layer —
+  // Express types (Request/Response/NextFunction/RequestHandler) are the
+  // whole point of a middleware module, the same way they're the point of
+  // a controller.
   test('express is confined to the HTTP layer', () => {
-    const allowed = ['app.ts', 'controllers/', 'routes/'];
+    const allowed = ['app.ts', 'controllers/', 'routes/', 'middleware/'];
     const violations = nonTestSources.filter(
       (file) =>
         file.content.includes("from 'express'") &&
@@ -154,7 +186,7 @@ describe('layering rules', () => {
       'agents/', 'executor/', 'knowledge/', 'memory/', 'planner/',
       'prompts/', 'services/', 'tools/', 'types/',
     ];
-    const forbidden = ['/controllers/', '/routes/', '/core/bootstrap', '/app', '/server'];
+    const forbidden = ['/controllers/', '/routes/', '/middleware/', '/core/bootstrap', '/app', '/server', '/websocket/'];
 
     for (const file of nonTestSources) {
       if (!domainDirs.some((dir) => file.path.startsWith(dir))) continue;

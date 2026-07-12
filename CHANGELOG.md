@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here, grouped by release. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions correspond to the framework's `AAI-0XX` story numbering rather than semver-per-commit.
 
+## [Unreleased] — AAI-037 Framework HTTP Gateway
+
+### Added
+
+- **REST API** over the framework core: `GET /health` (liveness, unchanged from v2.0.0), `GET /ready` (readiness — probes the AAI-036 optional Postgres/Redis backends when configured), `GET /diagnostics` (additive — now nests every cross-cutting hub's own `getDiagnostics()`), `GET /metrics` (Prometheus text exposition), `GET /openapi.json` (hand-maintained OpenAPI 3.0 spec).
+- **Chat, Agent, and Workflow endpoints** — `POST /chat` (unchanged), `POST/GET/DELETE /agent/sessions[...]` (a thin REST facade over the pre-existing `AgentLifecycleManager`), `GET /workflow/definitions`, `POST /workflow/:id/run`, `GET /workflow/runs[...]` (over the pre-existing `WorkflowRuntime`).
+- **SSE transport** — `GET /chat/stream`, and **WebSocket transport** — `GET /ws/chat` (`websocket/ChatWebSocketGateway.ts`, attached to the same `http.Server` `app.listen()` returns). Both share one new `services/chat-stream.service.ts` helper that turns a chat turn into a `Stream<string>` — the first HTTP transport wired to `StreamManager` (built in AAI-031).
+- **`middleware/`** — a new HTTP-layer directory: `requestContext.middleware.ts` (bridges every request through Observability/Tracing/Metrics with one correlation id), `errorHandler.middleware.ts` (maps `HttpError`/`ValidationError`/`WorkflowError` to status codes, everything else to a generic 500), `notFound.middleware.ts`, `validation.ts`, `HttpError.ts`.
+
+### Changed
+
+- `core/architecture.test.ts` — `middleware/` added to the express-confinement allowlist; two new fitness functions enforce that `new WebSocketServer(` and `import ... from 'ws'` appear only in `websocket/ChatWebSocketGateway.ts`, mirroring the existing OpenAI/Postgres/Redis single-construction-site rules.
+- `docs/ROADMAP.md` — AAI-037 marked complete; AAI-038 (Authentication & Authorization for the HTTP Gateway) queued next.
+
+### Verified
+
+- 629 tests passing (up from 576 after AAI-036), `tsc --noEmit` clean, `npm run build` clean. New tests use fake `LlmService`/`AgentLifecycleManager` implementations — no real network/LLM calls.
+
+---
+
 ## [Unreleased] — AAI-036 Persistent Storage Providers
 
 ### Added

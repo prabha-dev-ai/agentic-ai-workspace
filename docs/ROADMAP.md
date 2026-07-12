@@ -28,6 +28,16 @@
   `docs/architecture/adr/0007-async-storage-providers.md` for why the
   cache/checkpoint/knowledge-store providers are additive async
   capabilities rather than swapped-in sync implementations.
+- ✅ AAI-037 Framework HTTP Gateway — REST API (health/ready/diagnostics/
+  metrics/openapi, chat/agent/workflow endpoints), SSE and WebSocket
+  transports sharing one chat-streaming helper, and a new `middleware/`
+  HTTP layer (request context, error handling, validation). Reuses
+  Observability/Tracing/Metrics/Streaming/Workflow/Security exactly as
+  built — no new cross-cutting infrastructure.
+
+## Next
+
+- ⏳ AAI-038 Authentication & Authorization for the HTTP Gateway.
 
 ## Remaining
 
