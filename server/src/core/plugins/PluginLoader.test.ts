@@ -347,11 +347,14 @@ describe('installation diagnostics', () => {
       streamObservers: ['st_observer'],
       interactionObservers: ['i_observer'],
       workflowDefinitions: ['w_definition'],
+      asyncCaches: [],
       providesMemory: true,
       providesServices: true,
       providesEmbeddings: true,
       providesVectorStore: true,
       providesCheckpointStore: true,
+      providesAsyncCheckpointStore: false,
+      providesAsyncKnowledgeStore: false,
       subscribesToEvents: true,
     });
     assert.ok(installation.installedAt >= before, 'install time recorded');

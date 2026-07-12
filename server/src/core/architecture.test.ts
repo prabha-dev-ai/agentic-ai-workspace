@@ -70,6 +70,53 @@ describe('ownership rules', () => {
       'environment access must stay behind the config module',
     );
   });
+
+  // AAI-036: the same single-construction-site discipline as the OpenAI
+  // client above, extended to the two new external clients the
+  // persistent-storage providers depend on. Every other module talks to
+  // PgClient/RedisClient (the narrow interfaces in core/database and
+  // core/caching), never the concrete packages.
+  test('the Postgres client is constructed only in the composition root', () => {
+    const constructors = nonTestSources.filter((file) => file.content.includes('new Pool('));
+    assert.deepEqual(
+      constructors.map((file) => file.path),
+      ['core/bootstrap.ts'],
+      'new Pool(...) must appear exactly once, in core/bootstrap.ts',
+    );
+  });
+
+  test('only the composition root imports pg as a value', () => {
+    const valueImports = nonTestSources.filter((file) =>
+      /^import (?!type ).*from 'pg'/m.test(file.content),
+    );
+    assert.deepEqual(
+      valueImports.map((file) => file.path),
+      ['core/bootstrap.ts'],
+      'all other files must use "import type" for pg, or depend on PgClient instead',
+    );
+  });
+
+  test('the Redis client is constructed only in the composition root', () => {
+    const constructors = nonTestSources.filter((file) =>
+      file.content.includes('createClient('),
+    );
+    assert.deepEqual(
+      constructors.map((file) => file.path),
+      ['core/bootstrap.ts'],
+      'createClient(...) must appear exactly once, in core/bootstrap.ts',
+    );
+  });
+
+  test('only the composition root imports redis as a value', () => {
+    const valueImports = nonTestSources.filter((file) =>
+      /^import (?!type ).*from 'redis'/m.test(file.content),
+    );
+    assert.deepEqual(
+      valueImports.map((file) => file.path),
+      ['core/bootstrap.ts'],
+      'all other files must use "import type" for redis, or depend on RedisClient instead',
+    );
+  });
 });
 
 describe('layering rules', () => {

@@ -19,11 +19,14 @@ export interface PluginContributionSummary {
   streamObservers: string[];
   interactionObservers: string[];
   workflowDefinitions: string[];
+  asyncCaches: string[];
   providesMemory: boolean;
   providesServices: boolean;
   providesEmbeddings: boolean;
   providesVectorStore: boolean;
   providesCheckpointStore: boolean;
+  providesAsyncCheckpointStore: boolean;
+  providesAsyncKnowledgeStore: boolean;
   subscribesToEvents: boolean;
 }
 

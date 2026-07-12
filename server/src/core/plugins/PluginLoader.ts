@@ -54,6 +54,12 @@ import type {
   VectorStoreProvider,
   WorkflowContribution,
   WorkflowProvider,
+  AsyncCacheContribution,
+  AsyncCacheProvider,
+  AsyncCheckpointStoreContribution,
+  AsyncCheckpointStoreProvider,
+  AsyncKnowledgeStoreContribution,
+  AsyncKnowledgeStoreProvider,
 } from './PluginCapability.ts';
 
 // Every capability maps to the method that backs it. Declaring a
@@ -80,6 +86,9 @@ const CAPABILITY_METHODS: Record<PluginCapability, string> = {
   [PluginCapability.InteractionObserverProvider]: 'getInteractionObservers',
   [PluginCapability.WorkflowDefinitionProvider]: 'getWorkflowDefinitions',
   [PluginCapability.CheckpointStoreProvider]: 'getCheckpointStore',
+  [PluginCapability.AsyncCacheProvider]: 'getAsyncCaches',
+  [PluginCapability.AsyncCheckpointStoreProvider]: 'getAsyncCheckpointStore',
+  [PluginCapability.AsyncKnowledgeStoreProvider]: 'getAsyncKnowledgeStore',
 };
 
 /** A harvested contribution, tagged with the plugin that owns it. */
@@ -111,6 +120,7 @@ export class PluginLoader {
   private readonly streamObservers = new Map<string, Owned<StreamObserverContribution>>();
   private readonly interactionObservers = new Map<string, Owned<InteractionObserverContribution>>();
   private readonly workflowDefinitions = new Map<string, Owned<WorkflowDefinitionContribution>>();
+  private readonly asyncCaches = new Map<string, Owned<AsyncCacheContribution>>();
 
   // Unnamed contributions, keyed by owning plugin.
   private readonly memoryProviders = new Map<string, MemoryProvider>();
@@ -119,6 +129,8 @@ export class PluginLoader {
   private readonly embeddingProviders = new Map<string, EmbeddingContribution>();
   private readonly vectorStores = new Map<string, VectorStoreContribution>();
   private readonly checkpointStores = new Map<string, CheckpointStoreContribution>();
+  private readonly asyncCheckpointStores = new Map<string, AsyncCheckpointStoreContribution>();
+  private readonly asyncKnowledgeStores = new Map<string, AsyncKnowledgeStoreContribution>();
 
   // Diagnostics: what each installed plugin contributed, and when.
   private readonly installations = new Map<string, PluginInstallation>();
@@ -241,6 +253,18 @@ export class PluginLoader {
     return [...this.checkpointStores.values()];
   }
 
+  getAsyncCaches(): AsyncCacheContribution[] {
+    return [...this.asyncCaches.values()].map((entry) => entry.value);
+  }
+
+  getAsyncCheckpointStores(): AsyncCheckpointStoreContribution[] {
+    return [...this.asyncCheckpointStores.values()];
+  }
+
+  getAsyncKnowledgeStores(): AsyncKnowledgeStoreContribution[] {
+    return [...this.asyncKnowledgeStores.values()];
+  }
+
   getRankingStrategies(): RankingStrategyContribution[] {
     return [...this.rankingStrategies.values()].map((entry) => entry.value);
   }
@@ -339,11 +363,14 @@ export class PluginLoader {
       streamObservers: [],
       interactionObservers: [],
       workflowDefinitions: [],
+      asyncCaches: [],
       providesMemory: false,
       providesServices: false,
       providesEmbeddings: false,
       providesVectorStore: false,
       providesCheckpointStore: false,
+      providesAsyncCheckpointStore: false,
+      providesAsyncKnowledgeStore: false,
       subscribesToEvents: false,
     };
 
@@ -464,6 +491,28 @@ export class PluginLoader {
       summary.providesCheckpointStore = true;
     }
 
+    if (has(PluginCapability.AsyncCacheProvider)) {
+      const contributions = (plugin as AgentPlugin & AsyncCacheProvider).getAsyncCaches();
+      summary.asyncCaches = this.harvestNamed(this.asyncCaches, 'async cache', id,
+        contributions.map((value) => ({ name: value.name, value })));
+    }
+
+    if (has(PluginCapability.AsyncCheckpointStoreProvider)) {
+      this.asyncCheckpointStores.set(
+        id,
+        (plugin as AgentPlugin & AsyncCheckpointStoreProvider).getAsyncCheckpointStore(),
+      );
+      summary.providesAsyncCheckpointStore = true;
+    }
+
+    if (has(PluginCapability.AsyncKnowledgeStoreProvider)) {
+      this.asyncKnowledgeStores.set(
+        id,
+        (plugin as AgentPlugin & AsyncKnowledgeStoreProvider).getAsyncKnowledgeStore(),
+      );
+      summary.providesAsyncKnowledgeStore = true;
+    }
+
     if (has(PluginCapability.EventSubscriber)) {
       const subscriber = plugin as AgentPlugin & EventSubscriber;
       this.eventSubscribers.set(id, subscriber);
@@ -545,7 +594,7 @@ export class PluginLoader {
       this.tools, this.prompts, this.retrievers, this.workflows,
       this.agents, this.rankingStrategies, this.logSinks, this.spanExporters,
       this.metricExporters, this.caches, this.secretSources, this.streamObservers,
-      this.interactionObservers, this.workflowDefinitions,
+      this.interactionObservers, this.workflowDefinitions, this.asyncCaches,
     ];
 
     for (const catalog of catalogs) {
@@ -562,6 +611,8 @@ export class PluginLoader {
     this.embeddingProviders.delete(pluginId);
     this.vectorStores.delete(pluginId);
     this.checkpointStores.delete(pluginId);
+    this.asyncCheckpointStores.delete(pluginId);
+    this.asyncKnowledgeStores.delete(pluginId);
     this.installations.delete(pluginId);
 
     const handler = this.busSubscriptions.get(pluginId);

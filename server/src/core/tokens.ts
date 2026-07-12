@@ -25,6 +25,9 @@ import type { InteractionManager } from './interaction/index.ts';
 import type { WorkflowRuntime } from './workflow/index.ts';
 import type { CheckpointManager } from './checkpoint/index.ts';
 import type { VectorStore } from './vectorstore/index.ts';
+import type { PgClient } from './database/PgClient.ts';
+import type { RedisClient } from './caching/RedisClient.ts';
+import type { AsyncKnowledgeStore } from '../knowledge/async-knowledge-store.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
 // service type, so container.get(TOKENS.llmService) returns LlmService
@@ -59,4 +62,15 @@ export const TOKENS = {
   interactions: createServiceToken<InteractionManager>('interactions'),
   workflows: createServiceToken<WorkflowRuntime>('workflows'),
   checkpoints: createServiceToken<CheckpointManager>('checkpoints'),
+
+  // AAI-036: optional persistent-storage infrastructure. Registered only
+  // when their config is present (see config/env.ts's postgres/redis
+  // blocks) — resolve these with container.resolve(), not container.get(),
+  // since an unconfigured deployment never registers them. vectorStore
+  // above needs no new token: it stays the single VectorStore token,
+  // conditionally bound to PostgresVectorStore instead of
+  // InMemoryVectorStore in bootstrap.ts — the interface never changed.
+  postgresPool: createServiceToken<PgClient>('postgres-pool'),
+  redisClient: createServiceToken<RedisClient>('redis-client'),
+  asyncKnowledgeStore: createServiceToken<AsyncKnowledgeStore>('async-knowledge-store'),
 } as const;

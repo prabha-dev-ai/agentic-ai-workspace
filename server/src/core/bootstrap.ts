@@ -1,4 +1,10 @@
 import OpenAI from 'openai';
+// AAI-036: the composition root also owns Postgres/Redis client
+// construction, mirroring the pre-existing OpenAI-client-ownership rule
+// (core/architecture.test.ts) — extended in this story to cover the two
+// new external clients the persistent-storage providers depend on.
+import { Pool } from 'pg';
+import { createClient } from 'redis';
 import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.ts';
 import { ServiceCollection } from './container/ServiceCollection.ts';
@@ -13,17 +19,27 @@ import {
   OpenAIEmbeddingProvider,
   createEmbeddingsPlugin,
 } from './embeddings/index.ts';
-import { InMemoryVectorStore, createVectorStorePlugin } from './vectorstore/index.ts';
+import {
+  InMemoryVectorStore,
+  PostgresVectorStore,
+  createVectorStorePlugin,
+} from './vectorstore/index.ts';
 import { ConsoleLogSink, ObservabilityService } from './observability/index.ts';
 import type { LogLevel } from './observability/index.ts';
 import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
-import { CacheRegistry } from './caching/index.ts';
+import { CacheRegistry, RedisCache, createRedisCachePlugin } from './caching/index.ts';
 import { ApiKeyProvider, SecurityService } from './security/index.ts';
 import { StreamManager } from './streaming/index.ts';
 import { InteractionManager } from './interaction/index.ts';
 import { WorkflowRuntime } from './workflow/index.ts';
-import { CheckpointManager } from './checkpoint/index.ts';
+import {
+  CheckpointManager,
+  PostgresCheckpointStore,
+  createAsyncCheckpointStorePlugin,
+} from './checkpoint/index.ts';
+import { PostgresKnowledgeStore } from '../knowledge/postgres-knowledge-store.ts';
+import { createAsyncKnowledgeStorePlugin } from '../knowledge/async-knowledge-store-plugin.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -39,6 +55,9 @@ import {
 } from '../knowledge/knowledge-ranker.ts';
 import { createKnowledgeRankerPlugin } from '../knowledge/knowledge-ranker-plugin.ts';
 import type { Container } from './container/Container.ts';
+import type { VectorStore } from './vectorstore/index.ts';
+import type { PgClient } from './database/PgClient.ts';
+import type { RedisClient } from './caching/RedisClient.ts';
 
 // Plugins live next to the running code: src/plugins/ in development,
 // dist/plugins/ in production. Dropping a *.plugin file there is the
@@ -136,6 +155,63 @@ export async function bootstrap(
   const checkpoints = new CheckpointManager();
   checkpoints.connectEventBus(eventBus);
 
+  // AAI-036: optional persistent-storage backends. Constructed here —
+  // BEFORE plugins install, same as every other cross-cutting module
+  // above — and connected (their one necessarily-async setup step; see
+  // PostgresVectorStore.connect()'s doc comment) before bootstrap ever
+  // returns, so a caller resolving TOKENS.vectorStore or calling
+  // checkpoints.checkpointAsync() immediately after bootstrap() never
+  // races an unconnected store. Entirely optional: an unconfigured
+  // deployment (no DATABASE_URL/REDIS_URL) gets exactly v2.0.0's
+  // in-memory-only behavior, unchanged. `new Pool(...)` and
+  // `createClient(...)` appear ONLY here — the same single-construction-
+  // site rule as `new OpenAI(...)`, now enforced for Postgres/Redis too
+  // (see core/architecture.test.ts).
+  let vectorStore: VectorStore = new InMemoryVectorStore();
+  let postgresPool: PgClient | undefined;
+  let redisClient: RedisClient | undefined;
+  let asyncCheckpointStore: PostgresCheckpointStore | undefined;
+  let asyncKnowledgeStore: PostgresKnowledgeStore | undefined;
+  let redisCache: RedisCache | undefined;
+
+  if (env.postgres.url) {
+    const pool = new Pool({ connectionString: env.postgres.url });
+    postgresPool = pool;
+
+    const pgVectorStore = new PostgresVectorStore(pool, {
+      dimensions: env.postgres.vectorDimensions,
+    });
+    await pgVectorStore.connect();
+    vectorStore = pgVectorStore;
+
+    asyncCheckpointStore = new PostgresCheckpointStore(pool, 'postgres');
+    await asyncCheckpointStore.connect();
+
+    asyncKnowledgeStore = new PostgresKnowledgeStore(pool);
+    await asyncKnowledgeStore.connect();
+  }
+
+  if (env.redis.url) {
+    const rawClient = createClient({ url: env.redis.url });
+    await rawClient.connect();
+
+    // Adapter, not a direct structural assignment: the real client's
+    // `set` overloads are far richer than RedisCache needs, and wrapping
+    // explicitly here keeps RedisCache's own code decoupled from the
+    // `redis` package entirely (it only ever sees RedisClient).
+    redisClient = {
+      get: (key) => rawClient.get(key),
+      set: async (key, value, options) => {
+        await rawClient.set(key, value, options?.ttlMs !== undefined ? { PX: options.ttlMs } : undefined);
+      },
+      del: (key) => rawClient.del(key),
+      exists: async (key) => (await rawClient.exists(key)) > 0,
+      keys: (pattern) => rawClient.keys(pattern),
+    };
+
+    redisCache = new RedisCache('redis', redisClient);
+  }
+
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
   const pluginRegistry = new PluginRegistry();
@@ -204,6 +280,24 @@ export async function bootstrap(
     }),
   );
 
+  // AAI-036: the optional Postgres/Redis-backed providers, installed as
+  // built-in plugins for the SAME discoverability every other backend
+  // gets — but WITHOUT the lazy-accessor indirection above, because
+  // these instances are already fully constructed (and connected) by
+  // this point; there is no later "which backend wins" decision left to
+  // defer to builtContainer.
+  if (asyncCheckpointStore) {
+    const store = asyncCheckpointStore;
+    await pluginLoader.install(createAsyncCheckpointStorePlugin(() => store));
+  }
+  if (asyncKnowledgeStore) {
+    const store = asyncKnowledgeStore;
+    await pluginLoader.install(createAsyncKnowledgeStorePlugin(() => store));
+  }
+  if (redisCache) {
+    await pluginLoader.install(createRedisCachePlugin(redisCache));
+  }
+
   // Plugin-contributed log sinks (log-sink-provider capability) join
   // the console sink as additional destinations for every entry.
   for (const sink of pluginLoader.getLogSinks()) {
@@ -227,6 +321,13 @@ export async function bootstrap(
   // caching.getOrCreate().
   for (const cache of pluginLoader.getCaches()) {
     caching.register(cache);
+  }
+
+  // Plugin-contributed ASYNC caches (async-cache-provider capability —
+  // AAI-036, e.g. Redis) register into the same registry, under its
+  // separate async catalog (CacheRegistry.registerAsync).
+  for (const cache of pluginLoader.getAsyncCaches()) {
+    caching.registerAsync(cache);
   }
 
   // Plugin-contributed secret sources (secret-provider capability) join
@@ -259,6 +360,14 @@ export async function bootstrap(
   const [contributedCheckpointStore] = pluginLoader.getCheckpointStores();
   if (contributedCheckpointStore) {
     checkpoints.useStore(contributedCheckpointStore);
+  }
+
+  // Same swap for the ASYNC checkpoint backend (async-checkpoint-store-
+  // provider capability — AAI-036, Postgres) — independent of the sync
+  // swap above, since useStore()/useAsyncStore() govern separate backends.
+  const [contributedAsyncCheckpointStore] = pluginLoader.getAsyncCheckpointStores();
+  if (contributedAsyncCheckpointStore) {
+    checkpoints.useAsyncStore(contributedAsyncCheckpointStore);
   }
 
   const services = new ServiceCollection();
@@ -355,9 +464,12 @@ export async function bootstrap(
     new EmbeddingService(container.get(TOKENS.embeddingProvider)),
   );
 
-  services.registerSingleton(TOKENS.vectorStore, () =>
-    new InMemoryVectorStore(),
-  );
+  // AAI-036: PostgresVectorStore when configured, InMemoryVectorStore
+  // otherwise — the `vectorStore` local variable already decided which
+  // above. The VectorStore interface never changes, so nothing
+  // downstream (hybridRetriever, the vector-store plugin) needs to know
+  // or care which backend it got.
+  services.registerSingleton(TOKENS.vectorStore, () => vectorStore);
 
   services.registerSingleton(TOKENS.hybridRetriever, (container) =>
     createHybridRetriever({
@@ -384,6 +496,26 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.interactions, () => interactions);
   services.registerSingleton(TOKENS.workflows, () => workflows);
   services.registerSingleton(TOKENS.checkpoints, () => checkpoints);
+
+  // AAI-036: registered ONLY when configured — resolve these with
+  // container.resolve(), which returns undefined instead of throwing for
+  // an unregistered token (see core/container/Container.ts), never
+  // container.get(). Each is captured into a narrowed const first: a
+  // closure over the outer `let` would widen back to `T | undefined`
+  // even inside this `if`, since TypeScript can't prove the `let` stays
+  // narrowed by the time the factory actually runs.
+  if (postgresPool) {
+    const pool = postgresPool;
+    services.registerSingleton(TOKENS.postgresPool, () => pool);
+  }
+  if (redisClient) {
+    const client = redisClient;
+    services.registerSingleton(TOKENS.redisClient, () => client);
+  }
+  if (asyncKnowledgeStore) {
+    const store = asyncKnowledgeStore;
+    services.registerSingleton(TOKENS.asyncKnowledgeStore, () => store);
+  }
 
   // ServiceProvider plugins contribute services last, into the same
   // collection — duplicate protection guards them against core tokens

@@ -11,3 +11,7 @@ export type {
   CheckpointManagerOptions,
   CheckpointManagerDiagnostics,
 } from './CheckpointManager.ts';
+export type { AsyncCheckpointStore } from './AsyncCheckpointStore.ts';
+export { PostgresCheckpointStore } from './PostgresCheckpointStore.ts';
+export type { PostgresCheckpointStoreOptions } from './PostgresCheckpointStore.ts';
+export { createAsyncCheckpointStorePlugin } from './AsyncCheckpointStorePlugin.ts';

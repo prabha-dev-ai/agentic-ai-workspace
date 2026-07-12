@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here, grouped by release. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions correspond to the framework's `AAI-0XX` story numbering rather than semver-per-commit.
 
+## [Unreleased] — AAI-036 Persistent Storage Providers
+
+### Added
+
+- **`PostgresVectorStore`** — a pgvector-backed, drop-in replacement for `InMemoryVectorStore` behind the unchanged `VectorStore` interface; bound in `bootstrap.ts` when `DATABASE_URL` is set.
+- **Additive async storage capabilities** — `AsyncCache` (`RedisCache`), `AsyncCheckpointStore` (`PostgresCheckpointStore`), and a new `AsyncKnowledgeStore` (`PostgresKnowledgeStore`), each a parallel opt-in backend alongside the untouched synchronous in-memory ones (`CacheRegistry.registerAsync`/`getAsync`, `CheckpointManager.useAsyncStore`/`checkpointAsync`/`recoverAsync`). See `docs/architecture/adr/0007-async-storage-providers.md` for why additive async capabilities were chosen over a write-behind hybrid.
+- Three new plugin capabilities: `AsyncCacheProvider`, `AsyncCheckpointStoreProvider`, `AsyncKnowledgeStoreProvider` (the first plugin exposure of `KnowledgeStore` at all).
+- `core/database/PgClient.ts` and `core/caching/RedisClient.ts` — narrow structural interfaces the providers depend on instead of the concrete `pg`/`redis` packages, keeping them testable without a real database.
+- SQL migrations (`server/migrations/001`–`004`) for the pgvector extension, vector store, checkpoints, and knowledge store tables.
+- `DATABASE_URL`, `PG_VECTOR_DIMENSIONS`, `REDIS_URL` config (`config/env.ts`, `.env.example`) — all optional; an unconfigured deployment is unchanged from v2.0.0's in-memory-only behavior.
+
+### Changed
+
+- `core/bootstrap.ts` — constructs the Postgres `Pool` and Redis client (the composition root's single construction site for both, enforced by two new `architecture.test.ts` fitness functions mirroring the existing OpenAI-client rule) and wires the optional providers in only when configured.
+- `docs/ROADMAP.md` — AAI-036 marked complete under a new Phase 3.
+
+### Verified
+
+- 576 tests passing (up from 504 at v2.0.0), `tsc --noEmit` clean, `npm run build` clean.
+
+---
+
 ## [2.0.0] — 2026-07-08 — Framework Release (AAI-035)
 
 The **Framework Release** milestone: a multi-agent runtime with a dependency-injected core, a plugin platform, retrieval, and nine production-grade cross-cutting capabilities. No new framework functionality in this release itself — it's documentation, architecture validation, and release packaging for everything added since v1.0.0.

@@ -7,3 +7,8 @@ export { InMemoryCache } from './InMemoryCache.ts';
 export type { InMemoryCacheOptions } from './InMemoryCache.ts';
 export { CacheRegistry } from './CacheRegistry.ts';
 export type { CacheRegistryDiagnostics } from './CacheRegistry.ts';
+export type { AsyncCache } from './AsyncCache.ts';
+export type { RedisClient } from './RedisClient.ts';
+export { RedisCache } from './RedisCache.ts';
+export type { RedisCacheOptions } from './RedisCache.ts';
+export { createRedisCachePlugin } from './RedisCachePlugin.ts';

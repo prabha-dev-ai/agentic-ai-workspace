@@ -7,6 +7,8 @@ export type { SearchResult } from './SearchResult.ts';
 
 export type { VectorStore, VectorStoreDiagnostics } from './VectorStore.ts';
 export { InMemoryVectorStore } from './InMemoryVectorStore.ts';
+export { PostgresVectorStore } from './PostgresVectorStore.ts';
+export type { PostgresVectorStoreOptions } from './PostgresVectorStore.ts';
 
 export {
   SimilarityMetric,

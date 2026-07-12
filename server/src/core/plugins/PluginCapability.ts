@@ -34,6 +34,13 @@ export const PluginCapability = {
   InteractionObserverProvider: 'interaction-observer-provider',
   WorkflowDefinitionProvider: 'workflow-definition-provider',
   CheckpointStoreProvider: 'checkpoint-store-provider',
+  // AAI-036: additive async-storage capabilities. Kept deliberately
+  // separate from CacheProvider/CheckpointStoreProvider (sync contracts,
+  // unchanged) rather than added as optional methods on them — see the
+  // module comment above CacheAsyncStoreContribution below.
+  AsyncCacheProvider: 'async-cache-provider',
+  AsyncCheckpointStoreProvider: 'async-checkpoint-store-provider',
+  AsyncKnowledgeStoreProvider: 'async-knowledge-store-provider',
 } as const;
 
 export type PluginCapability =
@@ -437,6 +444,87 @@ export interface CheckpointStoreContribution {
  *  active checkpoint destination. */
 export interface CheckpointStoreProvider {
   getCheckpointStore(): CheckpointStoreContribution;
+}
+
+/**
+ * AAI-036: async storage contributions. Cache/CheckpointStore/
+ * KnowledgeStore are all synchronous contracts — every existing call
+ * site (CacheRegistry, CheckpointManager, retriever.service.ts) calls
+ * them without awaiting, and there is no synchronous Node.js client for
+ * a real network backend (Postgres, Redis). Rather than break those
+ * contracts or fake synchronicity with a write-behind mirror that can
+ * silently drop the most recent write on crash, these are NEW, additive
+ * capabilities: separate contribution shapes plugins opt into, separate
+ * harvesting catalogs in PluginLoader, separate opt-in methods on
+ * CacheRegistry/CheckpointManager (registerAsync/getAsync,
+ * useAsyncStore/checkpointAsync/recoverAsync). Nothing about the
+ * existing sync capabilities changes.
+ */
+
+/** Mirrors core/caching/AsyncCache.ts structurally. */
+export interface AsyncCacheStatsContribution {
+  hits: number;
+  misses: number;
+  sets: number;
+  deletes: number;
+  evictions: number;
+  expirations: number;
+  size: number;
+}
+
+export interface AsyncCacheContribution {
+  name: string;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown, options?: { ttlMs?: number }): Promise<void>;
+  has(key: string): Promise<boolean>;
+  delete(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+  size(): Promise<number>;
+  getStats(): Promise<AsyncCacheStatsContribution>;
+}
+
+/** A named async cache backend (Redis, a distributed cache). */
+export interface AsyncCacheProvider {
+  getAsyncCaches(): AsyncCacheContribution[];
+}
+
+/** Mirrors core/checkpoint/AsyncCheckpointStore.ts structurally. */
+export interface AsyncCheckpointStoreContribution {
+  name: string;
+  save(subjectId: string, data: unknown, metadata?: Record<string, unknown>): Promise<CheckpointContribution>;
+  getLatest(subjectId: string): Promise<CheckpointContribution | undefined>;
+  list(subjectId: string): Promise<CheckpointContribution[]>;
+  clear(subjectId: string): Promise<void>;
+  getStats(): Promise<{ saves: number; recoveries: number; misses: number; size: number }>;
+}
+
+/** Alternative ASYNC checkpoint backends (a real database) — single-
+ *  swappable-backend shape, same as CheckpointStoreProvider. */
+export interface AsyncCheckpointStoreProvider {
+  getAsyncCheckpointStore(): AsyncCheckpointStoreContribution;
+}
+
+/** Mirrors knowledge/knowledge.types.ts + knowledge/async-knowledge-store.ts structurally. */
+export interface KnowledgeDocumentContribution {
+  id: string;
+  title: string;
+  content: string;
+}
+
+export interface AsyncKnowledgeStoreContribution {
+  add(document: KnowledgeDocumentContribution): Promise<void>;
+  getAll(): Promise<KnowledgeDocumentContribution[]>;
+  getById(id: string): Promise<KnowledgeDocumentContribution | undefined>;
+}
+
+/** Alternative ASYNC knowledge stores (a real database) — single-
+ *  swappable-backend shape, same as VectorStoreProvider. There is no
+ *  synchronous KnowledgeStoreProvider capability: knowledge-store.ts's
+ *  in-memory KnowledgeStore was never exposed as a plugin capability at
+ *  all before AAI-036, so there is nothing sync to stay backward
+ *  compatible with here. */
+export interface AsyncKnowledgeStoreProvider {
+  getAsyncKnowledgeStore(): AsyncKnowledgeStoreContribution;
 }
 
 /** A contributed agent definition — mirrors agents/agent.types.ts. */

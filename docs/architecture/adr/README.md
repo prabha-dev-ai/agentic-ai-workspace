@@ -10,3 +10,4 @@ Short records of decisions made while building the framework, written after the 
 | [0004](0004-correlation-id-propagation.md) | One correlation id threaded through logs, traces, and every cross-cutting event |
 | [0005](0005-failure-as-state.md) | Failure as state, not exceptions, at cross-cutting boundaries |
 | [0006](0006-hitl-on-existing-lifecycle.md) | Human-in-the-loop built on the existing Agent Lifecycle, not a parallel mechanism |
+| [0007](0007-async-storage-providers.md) | Persistent storage as additive async capabilities, not synchronous swaps |

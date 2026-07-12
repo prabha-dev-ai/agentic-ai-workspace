@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import { CheckpointError } from './CheckpointError.ts';
 import { InMemoryCheckpointStore } from './InMemoryCheckpointStore.ts';
 import { CheckpointManager } from './CheckpointManager.ts';
+import { createAsyncCheckpointStorePlugin } from './AsyncCheckpointStorePlugin.ts';
 import { EventBus } from '../events/EventBus.ts';
 import { EventType } from '../events/EventType.ts';
 import { PluginLoader, PluginRegistry, PluginCapability } from '../plugins/index.ts';
-import type { AgentPlugin, CheckpointStoreProvider } from '../plugins/index.ts';
+import type { AgentPlugin, CheckpointStoreProvider, AsyncCheckpointStoreProvider } from '../plugins/index.ts';
 import type { CheckpointStore } from './CheckpointStore.ts';
+import type { AsyncCheckpointStore } from './AsyncCheckpointStore.ts';
+import type { Checkpoint } from './Checkpoint.ts';
+import type { CheckpointStoreStats } from './CheckpointStore.ts';
 
 describe('InMemoryCheckpointStore', () => {
   test('save then getLatest returns the saved checkpoint', () => {
@@ -278,5 +282,214 @@ describe('checkpoint store plugin capability', () => {
     manager.checkpoint('agent-1', 'via-plugin-store');
 
     assert.equal(store.getLatest('agent-1')?.data, 'via-plugin-store');
+  });
+});
+
+// An async in-memory checkpoint store, used only to test the manager's
+// checkpointAsync()/recoverAsync() surface without a real Postgres
+// backend — the same role InMemoryCheckpointStore plays for the sync
+// tests above.
+class FakeAsyncCheckpointStore implements AsyncCheckpointStore<string> {
+  readonly name: string;
+  private readonly history = new Map<string, Checkpoint<string>[]>();
+  private saves = 0;
+  private recoveries = 0;
+  private misses = 0;
+  private nextId = 0;
+
+  constructor(name = 'fake-async') {
+    this.name = name;
+  }
+
+  async save(subjectId: string, data: string, metadata?: Record<string, unknown>): Promise<Checkpoint<string>> {
+    const checkpoint: Checkpoint<string> = {
+      id: `ck-${this.nextId++}`,
+      subjectId,
+      data,
+      createdAt: new Date(),
+      metadata,
+    };
+    const list = this.history.get(subjectId) ?? [];
+    list.push(checkpoint);
+    this.history.set(subjectId, list);
+    this.saves++;
+    return checkpoint;
+  }
+
+  async getLatest(subjectId: string): Promise<Checkpoint<string> | undefined> {
+    const latest = this.history.get(subjectId)?.at(-1);
+    if (latest) {
+      this.recoveries++;
+      return latest;
+    }
+    this.misses++;
+    return undefined;
+  }
+
+  async list(subjectId: string): Promise<Checkpoint<string>[]> {
+    return [...(this.history.get(subjectId) ?? [])];
+  }
+
+  async clear(subjectId: string): Promise<void> {
+    this.history.delete(subjectId);
+  }
+
+  async getStats(): Promise<CheckpointStoreStats> {
+    let size = 0;
+    for (const list of this.history.values()) size += list.length;
+    return { saves: this.saves, recoveries: this.recoveries, misses: this.misses, size };
+  }
+}
+
+describe('CheckpointManager: useAsyncStore / checkpointAsync / recoverAsync', () => {
+  test('checkpointAsync/recoverAsync fail without a configured async store', async () => {
+    const manager = new CheckpointManager();
+
+    await assert.rejects(() => manager.checkpointAsync('agent-1', 'x'), CheckpointError);
+    await assert.rejects(() => manager.recoverAsync('agent-1'), CheckpointError);
+  });
+
+  test('the sync path is untouched by configuring an async store', () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore());
+
+    const checkpoint = manager.checkpoint('agent-1', { step: 1 });
+    assert.equal(checkpoint.subjectId, 'agent-1');
+    assert.equal(manager.getStore().name, 'in-memory', 'the sync store is a separate, unaffected backend');
+  });
+
+  test('checkpointAsync saves through the async store', async () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore());
+
+    const checkpoint = await manager.checkpointAsync('agent-1', 'state-a');
+
+    assert.equal(checkpoint.subjectId, 'agent-1');
+    assert.equal(checkpoint.data, 'state-a');
+  });
+
+  test('recoverAsync finds the latest checkpoint for a subject', async () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore());
+
+    await manager.checkpointAsync('agent-1', 'first');
+    await manager.checkpointAsync('agent-1', 'second');
+
+    const result = await manager.recoverAsync<string>('agent-1');
+    assert.equal(result.recovered, true);
+    assert.ok(result.recovered && result.checkpoint.data === 'second');
+  });
+
+  test('recoverAsync reports failure for an unknown subject, without throwing', async () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore());
+
+    const result = await manager.recoverAsync('missing');
+    assert.equal(result.recovered, false);
+  });
+
+  test('getAsyncStore reflects the configured backend', () => {
+    const manager = new CheckpointManager();
+    assert.equal(manager.getAsyncStore(), undefined);
+
+    const store = new FakeAsyncCheckpointStore();
+    manager.useAsyncStore(store);
+    assert.equal(manager.getAsyncStore(), store);
+  });
+
+  test('checkpointAsync/recoverAsync publish onto the event bus, same as the sync path', async () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore());
+    const bus = new EventBus();
+    manager.connectEventBus(bus);
+
+    const captured: string[] = [];
+    bus.subscribe('*', (envelope) => {
+      captured.push(envelope.type);
+    });
+
+    await manager.checkpointAsync('agent-1', 'state');
+    await manager.recoverAsync('agent-1');
+
+    assert.deepEqual(captured, [EventType.CheckpointSaved, EventType.CheckpointRecovered]);
+  });
+
+  test('getAsyncDiagnostics reports the async store name and stats', async () => {
+    const manager = new CheckpointManager();
+    manager.useAsyncStore(new FakeAsyncCheckpointStore('postgres'));
+
+    await manager.checkpointAsync('agent-1', 'a');
+    await manager.recoverAsync('agent-1');
+
+    const diagnostics = await manager.getAsyncDiagnostics();
+    assert.equal(diagnostics.storeName, 'postgres');
+    assert.equal(diagnostics.saves, 1);
+    assert.equal(diagnostics.recoveries, 1);
+  });
+});
+
+describe('async checkpoint store plugin capability', () => {
+  function makeAsyncCheckpointStorePlugin(
+    store: AsyncCheckpointStore,
+  ): AgentPlugin & AsyncCheckpointStoreProvider {
+    return createAsyncCheckpointStorePlugin(() => store);
+  }
+
+  test('declares the async-checkpoint-store-provider capability', () => {
+    const plugin = makeAsyncCheckpointStorePlugin(new FakeAsyncCheckpointStore());
+    assert.deepEqual(plugin.metadata.capabilities, [
+      PluginCapability.AsyncCheckpointStoreProvider,
+    ]);
+  });
+
+  test('the contributed store is harvested and reachable through the manager', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    const store = new FakeAsyncCheckpointStore('plugin-store');
+    await loader.install(makeAsyncCheckpointStorePlugin(store));
+
+    assert.equal(loader.getAsyncCheckpointStores().length, 1);
+    assert.equal(
+      loader.getInstallation('core.postgres-checkpoint-store').contributions.providesAsyncCheckpointStore,
+      true,
+    );
+
+    const manager = new CheckpointManager();
+    const [contributed] = loader.getAsyncCheckpointStores();
+    if (contributed) {
+      manager.useAsyncStore(contributed);
+    }
+
+    await manager.checkpointAsync('agent-1', 'via-plugin-store');
+    assert.equal((await store.getLatest('agent-1'))?.data, 'via-plugin-store');
+  });
+
+  test('uninstall removes the contributed async store', async () => {
+    const loader = new PluginLoader(new PluginRegistry());
+    await loader.install(makeAsyncCheckpointStorePlugin(new FakeAsyncCheckpointStore()));
+
+    await loader.uninstall('core.postgres-checkpoint-store');
+
+    assert.deepEqual(loader.getAsyncCheckpointStores(), []);
+  });
+
+  test('the store accessor is only touched at call time', async () => {
+    let available = false;
+    const store = new FakeAsyncCheckpointStore();
+    const loader = new PluginLoader(new PluginRegistry());
+
+    await loader.install(
+      createAsyncCheckpointStorePlugin(() => {
+        if (!available) throw new Error('resolved too early');
+        return store;
+      }),
+    );
+
+    const contribution = loader.getAsyncCheckpointStores()[0];
+    assert.ok(contribution);
+    await assert.rejects(() => contribution.save('x', 'data'), /resolved too early/);
+
+    available = true;
+    await contribution.save('x', 'data');
+    assert.equal((await contribution.getLatest('x'))?.data, 'data');
   });
 });
