@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { parseApiKeyDefinitions } from '../core/auth/ApiKeyStore.ts';
 
 dotenv.config();
 
@@ -26,5 +27,27 @@ export const env = {
 
   redis: {
     url: process.env.REDIS_URL || '',
+  },
+
+  // Gateway authentication/authorization (AAI-038). Both credential
+  // sources are entirely optional and independent of each other — leaving
+  // both unset gives you exactly AAI-037's behavior (every route open),
+  // since AuthService.isEnabled() is false and the authorization
+  // middleware becomes a no-op. See core/auth/ApiKeyStore.ts for the
+  // API_KEYS format.
+  auth: {
+    apiKeys: parseApiKeyDefinitions(process.env.API_KEYS || ''),
+    jwt: {
+      secret: process.env.JWT_SECRET || '',
+      issuer: process.env.JWT_ISSUER || '',
+    },
+  },
+
+  // Gateway rate limiting (AAI-038). Optional — unset (or either value
+  // non-positive) disables it entirely, same reasoning as the auth block
+  // above.
+  rateLimit: {
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 0,
+    max: Number(process.env.RATE_LIMIT_MAX) || 0,
   },
 };

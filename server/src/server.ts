@@ -15,4 +15,5 @@ createChatWebSocketGateway(server, {
   streaming: container.get(TOKENS.streaming),
   security: container.get(TOKENS.security),
   observability: container.get(TOKENS.observability),
+  auth: container.get(TOKENS.auth),
 });

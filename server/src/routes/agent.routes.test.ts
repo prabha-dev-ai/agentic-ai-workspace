@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { ObservabilityService } from '../core/observability/index.ts';
 import { SecurityService } from '../core/security/index.ts';
+import { AuthService } from '../core/auth/index.ts';
+import { TraceManager } from '../core/tracing/index.ts';
 import { createErrorHandler } from '../middleware/errorHandler.middleware.ts';
+import { createRequirePermissionMiddleware } from '../middleware/authorize.middleware.ts';
 import { createAgentRouter } from './agent.routes.ts';
 import type { AgentSession, AgentLifecycleManager } from '../agents/agent-lifecycle.ts';
 import type { Agent } from '../agents/agent.types.ts';
@@ -77,10 +80,21 @@ function listen(app: express.Express) {
 
 function buildApp(lifecycle: AgentLifecycleManager) {
   const security = new SecurityService();
+  const observability = new ObservabilityService();
+  const tracing = new TraceManager();
+  // An AuthService with no ApiKeyStore/JwtService configured is disabled
+  // (isEnabled() === false), so requirePermission is a no-op here — these
+  // tests exercise the agent routes' own behavior, not RBAC (see
+  // middleware/authorize.middleware.test.ts and routes/agent.routes.auth.test.ts
+  // for auth-enabled coverage).
+  const auth = new AuthService();
+  const requirePermission = (permission: Parameters<typeof createRequirePermissionMiddleware>[1]) =>
+    createRequirePermissionMiddleware({ auth, observability, tracing }, permission);
+
   const app = express();
   app.use(express.json());
-  app.use('/agent', createAgentRouter(lifecycle, security));
-  app.use(createErrorHandler({ observability: new ObservabilityService(), security }));
+  app.use('/agent', createAgentRouter(lifecycle, security, requirePermission));
+  app.use(createErrorHandler({ observability, security }));
   return app;
 }
 

@@ -5,6 +5,7 @@ import { WebSocket } from 'ws';
 import { StreamManager } from '../core/streaming/index.ts';
 import { SecurityService } from '../core/security/index.ts';
 import { ObservabilityService } from '../core/observability/index.ts';
+import { ApiKeyStore, AuthService } from '../core/auth/index.ts';
 import { createChatWebSocketGateway } from './ChatWebSocketGateway.ts';
 import type { LlmService } from '../services/llm.service.ts';
 
@@ -40,6 +41,7 @@ describe('ChatWebSocketGateway', () => {
       streaming: new StreamManager(),
       security: new SecurityService(),
       observability: new ObservabilityService(),
+      auth: new AuthService(),
     });
 
     const url = await listen(server);
@@ -77,6 +79,7 @@ describe('ChatWebSocketGateway', () => {
       streaming: new StreamManager(),
       security: new SecurityService(),
       observability: new ObservabilityService(),
+      auth: new AuthService(),
     });
 
     const url = await listen(server);
@@ -91,6 +94,55 @@ describe('ChatWebSocketGateway', () => {
 
       assert.equal(frame.type, 'error');
       assert.equal(socket.readyState, socket.OPEN);
+      socket.close();
+    } finally {
+      server.close();
+    }
+  });
+
+  test('rejects the upgrade when auth is enabled and no credential is supplied', async () => {
+    const server = http.createServer();
+    const auth = new AuthService({ apiKeyStore: new ApiKeyStore([{ key: 'k1', subject: 'alice', roles: ['viewer'] }]) });
+    createChatWebSocketGateway(server, {
+      llmService: fakeLlmService('unused'),
+      streaming: new StreamManager(),
+      security: new SecurityService(),
+      observability: new ObservabilityService(),
+      auth,
+    });
+
+    const url = await listen(server);
+    try {
+      const socket = new WebSocket(url);
+      const failure = await new Promise<{ code: number }>((resolve) => {
+        socket.on('unexpected-response', (_req, res) => resolve({ code: res.statusCode ?? 0 }));
+        socket.on('error', () => resolve({ code: -1 }));
+      });
+      assert.equal(failure.code, 401);
+    } finally {
+      server.close();
+    }
+  });
+
+  test('accepts the upgrade with a valid API key passed as a query parameter', async () => {
+    const server = http.createServer();
+    const auth = new AuthService({ apiKeyStore: new ApiKeyStore([{ key: 'k1', subject: 'alice', roles: ['viewer'] }]) });
+    createChatWebSocketGateway(server, {
+      llmService: fakeLlmService('hi'),
+      streaming: new StreamManager(),
+      security: new SecurityService(),
+      observability: new ObservabilityService(),
+      auth,
+    });
+
+    const url = await listen(server);
+    try {
+      const socket = new WebSocket(`${url}?apiKey=k1`);
+      await new Promise<void>((resolve, reject) => {
+        socket.on('open', () => resolve());
+        socket.on('error', reject);
+        socket.on('unexpected-response', () => reject(new Error('unexpected 401')));
+      });
       socket.close();
     } finally {
       server.close();

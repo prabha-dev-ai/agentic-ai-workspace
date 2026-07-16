@@ -28,6 +28,8 @@ import type { VectorStore } from './vectorstore/index.ts';
 import type { PgClient } from './database/PgClient.ts';
 import type { RedisClient } from './caching/RedisClient.ts';
 import type { AsyncKnowledgeStore } from '../knowledge/async-knowledge-store.ts';
+import type { AuthService } from './auth/AuthService.ts';
+import type { RateLimiter } from './auth/RateLimiter.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
 // service type, so container.get(TOKENS.llmService) returns LlmService
@@ -73,4 +75,12 @@ export const TOKENS = {
   postgresPool: createServiceToken<PgClient>('postgres-pool'),
   redisClient: createServiceToken<RedisClient>('redis-client'),
   asyncKnowledgeStore: createServiceToken<AsyncKnowledgeStore>('async-knowledge-store'),
+
+  // AAI-038: the gateway's authn/authz hub. Always registered (AuthService
+  // itself always exists — see its isEnabled() doc comment); rateLimiter
+  // is optional, registered only when RATE_LIMIT_WINDOW_MS/RATE_LIMIT_MAX
+  // are both configured — resolve() it, not get(), same as the AAI-036
+  // optional-backend tokens above.
+  auth: createServiceToken<AuthService>('auth'),
+  rateLimiter: createServiceToken<RateLimiter>('rate-limiter'),
 } as const;

@@ -4,7 +4,10 @@ import express from 'express';
 import { WorkflowRuntime } from '../core/workflow/index.ts';
 import { ObservabilityService } from '../core/observability/index.ts';
 import { SecurityService } from '../core/security/index.ts';
+import { AuthService } from '../core/auth/index.ts';
+import { TraceManager } from '../core/tracing/index.ts';
 import { createErrorHandler } from '../middleware/errorHandler.middleware.ts';
+import { createRequirePermissionMiddleware } from '../middleware/authorize.middleware.ts';
 import { createWorkflowRouter } from './workflow.routes.ts';
 
 function listen(app: express.Express) {
@@ -17,10 +20,19 @@ function listen(app: express.Express) {
 }
 
 function buildApp(workflows: WorkflowRuntime) {
+  const observability = new ObservabilityService();
+  const security = new SecurityService();
+  const tracing = new TraceManager();
+  // Disabled AuthService (no ApiKeyStore/JwtService) — requirePermission
+  // is a no-op, so these tests exercise the workflow routes themselves.
+  const auth = new AuthService();
+  const requirePermission = (permission: Parameters<typeof createRequirePermissionMiddleware>[1]) =>
+    createRequirePermissionMiddleware({ auth, observability, tracing }, permission);
+
   const app = express();
   app.use(express.json());
-  app.use('/workflow', createWorkflowRouter(workflows));
-  app.use(createErrorHandler({ observability: new ObservabilityService(), security: new SecurityService() }));
+  app.use('/workflow', createWorkflowRouter(workflows, requirePermission));
+  app.use(createErrorHandler({ observability, security }));
   return app;
 }
 

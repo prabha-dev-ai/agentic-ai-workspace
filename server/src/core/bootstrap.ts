@@ -30,6 +30,7 @@ import { ConsoleSpanExporter, TraceManager } from './tracing/index.ts';
 import { ConsoleMetricExporter, MetricsRegistry } from './metrics/index.ts';
 import { CacheRegistry, RedisCache, createRedisCachePlugin } from './caching/index.ts';
 import { ApiKeyProvider, SecurityService } from './security/index.ts';
+import { ApiKeyStore, AuthService, JwtService, RateLimiter } from './auth/index.ts';
 import { StreamManager } from './streaming/index.ts';
 import { InteractionManager } from './interaction/index.ts';
 import { WorkflowRuntime } from './workflow/index.ts';
@@ -126,6 +127,39 @@ export async function bootstrap(
   const security = new SecurityService();
   security.addSecretSource(new ApiKeyProvider({ llm: env.llm.apiKey }));
   security.getSecret('llm');
+
+  // AAI-038: the gateway's authn/authz hub exists BEFORE plugins install
+  // for the same consistency reason as every other cross-cutting module
+  // above. Both credential sources are optional and independent — an
+  // unconfigured deployment gets an AuthService whose isEnabled() is
+  // false, so the HTTP layer's authorization middleware never enforces
+  // anything and every route stays exactly as open as it was in AAI-037.
+  // Configured API keys are also protected against accidental redaction
+  // the same way the LLM key above is, since they're just as sensitive.
+  const apiKeyStore =
+    env.auth.apiKeys.length > 0 ? new ApiKeyStore(env.auth.apiKeys) : undefined;
+  for (const definition of env.auth.apiKeys) {
+    security.protect(definition.key);
+  }
+  const jwtService = env.auth.jwt.secret
+    ? new JwtService({
+        secret: env.auth.jwt.secret,
+        ...(env.auth.jwt.issuer ? { issuer: env.auth.jwt.issuer } : {}),
+      })
+    : undefined;
+  const auth = new AuthService({
+    ...(apiKeyStore !== undefined ? { apiKeyStore } : {}),
+    ...(jwtService !== undefined ? { jwtService } : {}),
+  });
+  if (env.auth.jwt.secret) {
+    security.protect(env.auth.jwt.secret);
+  }
+
+  // Gateway rate limiting (AAI-038) — optional, independent of auth.
+  const rateLimiter =
+    env.rateLimit.windowMs > 0 && env.rateLimit.max > 0
+      ? new RateLimiter({ windowMs: env.rateLimit.windowMs, max: env.rateLimit.max })
+      : undefined;
 
   // Streaming exists BEFORE plugins install for the same consistency
   // reason, and connects to the shared event bus immediately: stream
@@ -492,6 +526,11 @@ export async function bootstrap(
   services.registerSingleton(TOKENS.metrics, () => metrics);
   services.registerSingleton(TOKENS.caching, () => caching);
   services.registerSingleton(TOKENS.security, () => security);
+  services.registerSingleton(TOKENS.auth, () => auth);
+  if (rateLimiter) {
+    const limiter = rateLimiter;
+    services.registerSingleton(TOKENS.rateLimiter, () => limiter);
+  }
   services.registerSingleton(TOKENS.streaming, () => streaming);
   services.registerSingleton(TOKENS.interactions, () => interactions);
   services.registerSingleton(TOKENS.workflows, () => workflows);
