@@ -40,6 +40,12 @@ export const EventType = {
   CheckpointSaved: 'checkpoint.saved',
   CheckpointRecovered: 'checkpoint.recovered',
   CheckpointRecoveryFailed: 'checkpoint.recovery-failed',
+  // AAI-039: distributed agent execution lifecycle.
+  WorkerRegistered: 'worker.registered',
+  WorkerHeartbeat: 'worker.heartbeat',
+  WorkerLost: 'worker.lost',
+  TaskDelegatedRemote: 'task.delegated.remote',
+  TaskRetried: 'task.retried',
 } as const;
 
 export type EventType = (typeof EventType)[keyof typeof EventType];

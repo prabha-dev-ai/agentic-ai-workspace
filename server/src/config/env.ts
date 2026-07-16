@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { randomUUID } from 'node:crypto';
 import { parseApiKeyDefinitions } from '../core/auth/ApiKeyStore.ts';
 
 dotenv.config();
@@ -49,5 +50,31 @@ export const env = {
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 0,
     max: Number(process.env.RATE_LIMIT_MAX) || 0,
+  },
+
+  // Distributed agent execution (AAI-039). Disabled by default — an
+  // unconfigured deployment keeps exactly today's single-process
+  // behavior (TOKENS.messageBus stays a plain MessageBus; no worker
+  // registry, heartbeat, or event-bridge intervals ever start). See
+  // core/distributed/index.ts.
+  distributed: {
+    enabled: process.env.DISTRIBUTED_ENABLED === 'true',
+    /** This process's node identity, stamped on every worker
+     *  announcement/heartbeat/forwarded message. Random per process when
+     *  unset, so a local multi-instance dev setup does not need manual
+     *  configuration to get distinct node ids. */
+    nodeId: process.env.NODE_ID || randomUUID(),
+    /** Registry agent type treated as a routing candidate — must match
+     *  whatever SupervisorAgent/DistributedSupervisor is configured with. */
+    workerType: process.env.DISTRIBUTED_WORKER_TYPE || 'worker',
+    heartbeatIntervalMs: Number(process.env.WORKER_HEARTBEAT_INTERVAL_MS) || 5000,
+    heartbeatTimeoutMs: Number(process.env.WORKER_HEARTBEAT_TIMEOUT_MS) || 15000,
+    /** How many times DistributedSupervisor re-delegates a failed task to
+     *  a different worker before giving up. 0 disables retry. */
+    maxRetries: Number(process.env.DISTRIBUTED_MAX_RETRIES) || 0,
+    /** "memory" (default, zero-dependency, single-process reference
+     *  transport) or "redis" (real cross-process delivery — requires
+     *  redis.url above to also be set). */
+    transport: (process.env.DISTRIBUTED_TRANSPORT || 'memory') as 'memory' | 'redis',
   },
 };

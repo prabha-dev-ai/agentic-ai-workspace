@@ -30,6 +30,15 @@ import type { RedisClient } from './caching/RedisClient.ts';
 import type { AsyncKnowledgeStore } from '../knowledge/async-knowledge-store.ts';
 import type { AuthService } from './auth/AuthService.ts';
 import type { RateLimiter } from './auth/RateLimiter.ts';
+import type {
+  DistributedTransport,
+  WorkerRegistry,
+  RemoteTaskBridge,
+  DistributedEventBridge,
+  DistributedSupervisor,
+  HeartbeatWatchdog,
+  WorkerHeartbeatSender,
+} from './distributed/index.ts';
 
 // Every service the framework registers, in one catalog. Tokens carry the
 // service type, so container.get(TOKENS.llmService) returns LlmService
@@ -83,4 +92,19 @@ export const TOKENS = {
   // optional-backend tokens above.
   auth: createServiceToken<AuthService>('auth'),
   rateLimiter: createServiceToken<RateLimiter>('rate-limiter'),
+
+  // AAI-039: distributed agent execution. Registered only when
+  // DISTRIBUTED_ENABLED=true (see config/env.ts's distributed block) —
+  // resolve() these, not get(), same as the AAI-036/038 optional tokens
+  // above. supervisorAgent/messageBus/agentRegistry above need no new
+  // tokens: messageBus stays bound to the same token, conditionally a
+  // DistributedMessageBus instead of a plain MessageBus, the same
+  // swappable-concrete-class idiom as vectorStore.
+  distributedTransport: createServiceToken<DistributedTransport>('distributed-transport'),
+  workerRegistry: createServiceToken<WorkerRegistry>('worker-registry'),
+  workerHeartbeatSender: createServiceToken<WorkerHeartbeatSender>('worker-heartbeat-sender'),
+  remoteTaskBridge: createServiceToken<RemoteTaskBridge>('remote-task-bridge'),
+  distributedEventBridge: createServiceToken<DistributedEventBridge>('distributed-event-bridge'),
+  heartbeatWatchdog: createServiceToken<HeartbeatWatchdog>('heartbeat-watchdog'),
+  distributedSupervisor: createServiceToken<DistributedSupervisor>('distributed-supervisor'),
 } as const;

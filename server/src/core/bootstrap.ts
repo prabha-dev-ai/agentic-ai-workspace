@@ -41,6 +41,18 @@ import {
 } from './checkpoint/index.ts';
 import { PostgresKnowledgeStore } from '../knowledge/postgres-knowledge-store.ts';
 import { createAsyncKnowledgeStorePlugin } from '../knowledge/async-knowledge-store-plugin.ts';
+import {
+  DistributedEventBridge,
+  DistributedMessageBus,
+  DistributedSupervisor,
+  HeartbeatWatchdog,
+  InMemoryDistributedTransport,
+  RedisDistributedTransport,
+  RemoteTaskBridge,
+  WorkerHeartbeatSender,
+  WorkerRegistry,
+} from './distributed/index.ts';
+import type { DistributedTransport, PubSubClient } from './distributed/index.ts';
 import { TOKENS } from './tokens.ts';
 import { createLlmService } from '../services/llm.service.ts';
 import { createPlannerService } from '../planner/planner.service.ts';
@@ -246,6 +258,97 @@ export async function bootstrap(
     redisCache = new RedisCache('redis', redisClient);
   }
 
+  // Distributed agent execution (AAI-039). Off by default (see
+  // config/env.ts's distributed.enabled) — everything below is skipped
+  // entirely for a non-distributed deployment, which keeps TOKENS.
+  // messageBus a plain MessageBus exactly as before this story.
+  // Constructed eagerly, alongside the Redis cache client above, for the
+  // same reason: the Redis-backed transport needs an awaited connect()
+  // before services.build(), and `createClient(...)`/`new
+  // WebSocketServer(...)`-style single-construction-site discipline
+  // (core/architecture.test.ts) means any second Redis connection this
+  // story needs must also live here.
+  let distributedTransport: DistributedTransport | undefined;
+  let distributedMessageBus: DistributedMessageBus | undefined;
+  let workerRegistry: WorkerRegistry | undefined;
+  let workerHeartbeatSender: WorkerHeartbeatSender | undefined;
+  let heartbeatWatchdog: HeartbeatWatchdog | undefined;
+  let distributedEventBridge: DistributedEventBridge | undefined;
+
+  if (env.distributed.enabled) {
+    if (env.distributed.transport === 'redis' && env.redis.url) {
+      const publisher = createClient({ url: env.redis.url });
+      await publisher.connect();
+      // node-redis requires a DEDICATED connection for subscriber mode —
+      // a client that has issued SUBSCRIBE cannot issue other commands.
+      const subscriber = publisher.duplicate();
+      await subscriber.connect();
+
+      const pubSubClient: PubSubClient = {
+        publish: async (channel, payload) => {
+          await publisher.publish(channel, payload);
+        },
+        subscribe: (channel, onMessage) =>
+          subscriber.subscribe(channel, (payload) => onMessage(payload)),
+        unsubscribe: async (channel) => {
+          await subscriber.unsubscribe(channel);
+        },
+      };
+
+      distributedTransport = new RedisDistributedTransport(pubSubClient);
+    } else {
+      distributedTransport = new InMemoryDistributedTransport();
+    }
+
+    distributedMessageBus = new DistributedMessageBus(
+      eventBus,
+      distributedTransport,
+      env.distributed.nodeId,
+      {
+        logger: observability.getLogger('distributed.message-bus'),
+        metrics,
+      },
+    );
+
+    workerRegistry = new WorkerRegistry({
+      eventBus,
+      transport: distributedTransport,
+      nodeId: env.distributed.nodeId,
+      workerType: env.distributed.workerType,
+      logger: observability.getLogger('distributed.worker-registry'),
+      metrics,
+    });
+    distributedMessageBus.connectWorkerRegistry(workerRegistry);
+
+    // Sends this node's local workers' heartbeats — without it, every
+    // locally-registered worker would silently go stale and eventually
+    // be declared lost by its own node's HeartbeatWatchdog.
+    workerHeartbeatSender = new WorkerHeartbeatSender({
+      workerRegistry,
+      transport: distributedTransport,
+      eventBus,
+      nodeId: env.distributed.nodeId,
+      intervalMs: env.distributed.heartbeatIntervalMs,
+      logger: observability.getLogger('distributed.heartbeat-sender'),
+    });
+
+    heartbeatWatchdog = new HeartbeatWatchdog({
+      workerRegistry,
+      eventBus,
+      timeoutMs: env.distributed.heartbeatTimeoutMs,
+      sweepIntervalMs: env.distributed.heartbeatIntervalMs,
+      logger: observability.getLogger('distributed.heartbeat'),
+      metrics,
+    });
+
+    distributedEventBridge = new DistributedEventBridge({
+      eventBus,
+      transport: distributedTransport,
+      nodeId: env.distributed.nodeId,
+      logger: observability.getLogger('distributed.event-bridge'),
+    });
+  }
+
   // Plugins install before the container builds, so services can receive
   // the loader (the aggregated tool catalog) as an ordinary dependency.
   const pluginRegistry = new PluginRegistry();
@@ -408,8 +511,14 @@ export async function bootstrap(
 
   services.registerSingleton(TOKENS.eventBus, () => eventBus);
 
+  // AAI-039: DistributedMessageBus when distributed mode is enabled,
+  // plain MessageBus otherwise — the `distributedMessageBus` local
+  // variable above already decided which. The MessageBus interface never
+  // changes, so AgentRegistry/DelegationManager/SupervisorAgent below
+  // need no changes to keep working: the same swappable-concrete-class
+  // idiom as TOKENS.vectorStore (Postgres vs. in-memory).
   services.registerSingleton(TOKENS.messageBus, (container) =>
-    new MessageBus(container.get(TOKENS.eventBus)),
+    distributedMessageBus ?? new MessageBus(container.get(TOKENS.eventBus)),
   );
 
   services.registerSingleton(TOKENS.agentRegistry, (container) =>
@@ -434,6 +543,59 @@ export async function bootstrap(
       eventBus: container.get(TOKENS.eventBus),
     }),
   );
+  // AAI-039: registered ONLY when distributed mode is enabled — resolve
+  // these with container.resolve(), never container.get(), the same
+  // optional-token discipline as the AAI-036/038 tokens below. Each
+  // local `let` is captured into a narrowed const first for the same
+  // reason postgresPool/redisClient are below: a closure over a `let`
+  // does not stay narrowed to non-undefined by the time the factory runs.
+  if (distributedTransport) {
+    const transport = distributedTransport;
+    services.registerSingleton(TOKENS.distributedTransport, () => transport);
+  }
+  if (workerRegistry) {
+    const registry = workerRegistry;
+    services.registerSingleton(TOKENS.workerRegistry, () => registry);
+  }
+  if (workerHeartbeatSender) {
+    const sender = workerHeartbeatSender;
+    services.registerSingleton(TOKENS.workerHeartbeatSender, () => sender);
+  }
+  if (heartbeatWatchdog) {
+    const watchdog = heartbeatWatchdog;
+    services.registerSingleton(TOKENS.heartbeatWatchdog, () => watchdog);
+  }
+  if (distributedEventBridge) {
+    const bridge = distributedEventBridge;
+    services.registerSingleton(TOKENS.distributedEventBridge, () => bridge);
+  }
+  if (env.distributed.enabled && distributedTransport) {
+    const transport = distributedTransport;
+    services.registerSingleton(TOKENS.remoteTaskBridge, (container) =>
+      new RemoteTaskBridge({
+        transport,
+        nodeId: env.distributed.nodeId,
+        delegationManager: container.get(TOKENS.delegationManager),
+        logger: observability.getLogger('distributed.task-bridge'),
+      }),
+    );
+  }
+  if (env.distributed.enabled && workerRegistry) {
+    const registry = workerRegistry;
+    services.registerSingleton(TOKENS.distributedSupervisor, (container) =>
+      new DistributedSupervisor({
+        delegationManager: container.get(TOKENS.delegationManager),
+        eventBus: container.get(TOKENS.eventBus),
+        workerRegistry: registry,
+        agentRegistry: container.get(TOKENS.agentRegistry),
+        maxRetries: env.distributed.maxRetries,
+        logger: observability.getLogger('distributed.supervisor'),
+        tracer: tracing.getTracer('distributed.supervisor'),
+        metrics,
+      }),
+    );
+  }
+
   services.registerSingleton(TOKENS.pluginRegistry, () => pluginRegistry);
   services.registerSingleton(TOKENS.pluginLoader, () => pluginLoader);
 
@@ -562,5 +724,27 @@ export async function bootstrap(
   pluginLoader.registerServices(services);
 
   builtContainer = services.build();
+
+  // AAI-039: post-build distributed wiring. WorkerRegistry/
+  // DistributedMessageBus are connected to AgentRegistry/
+  // RemoteTaskBridge here — AFTER the container exists — specifically to
+  // avoid a MessageBus -> WorkerRegistry -> AgentRegistry -> MessageBus
+  // construction cycle (see WorkerRegistry's class doc comment); the same
+  // reasoning CheckpointManager.connectEventBus() follows above, just
+  // deferred one step further, to after container.build() rather than
+  // merely after its own construction.
+  if (env.distributed.enabled && workerRegistry && distributedMessageBus) {
+    workerRegistry.connectAgentRegistry(builtContainer.get(TOKENS.agentRegistry));
+
+    const remoteTaskBridge = builtContainer.resolve(TOKENS.remoteTaskBridge);
+    if (remoteTaskBridge) {
+      distributedMessageBus.connectRemoteTaskBridge(remoteTaskBridge);
+    }
+
+    workerHeartbeatSender?.start();
+    heartbeatWatchdog?.start();
+    distributedEventBridge?.start();
+  }
+
   return builtContainer;
 }
